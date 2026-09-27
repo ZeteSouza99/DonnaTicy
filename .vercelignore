@@ -1,0 +1,22 @@
+# Configurações e credenciais locais não fazem parte do deploy.
+.env*
+.vercel
+.vscode
+cookies.txt
+VERCEL_ENV.txt
+*.pem
+*.key
+*.p12
+*.pfx
+*.dump
+*.bak
+
+# Serviço local de impressão (roda no PC da loja, não na Vercel).
+print-service
+
+# Dependências, caches e logs são recriados no ambiente de build.
+node_modules
+.next
+.git
+*.log
+*.tsbuildinfo
