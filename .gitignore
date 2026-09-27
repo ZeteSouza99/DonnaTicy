@@ -57,3 +57,7 @@ cookies.txt
 # print-service: configuração e dependências de cada instalação
 /print-service/config.json
 /print-service/node_modules
+
+# backups locais do banco (dados reais) e scripts temporários de manutenção
+/.db-backup/
+/scripts/tmp-*.mjs
