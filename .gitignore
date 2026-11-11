@@ -64,3 +64,7 @@ cookies.txt
 
 # planilhas de importação com dados reais: ficam só no disco
 /docs/import-template/
+
+# saída local do deploy manual e scripts pessoais do editor
+/.deploy.log
+/.vscode/

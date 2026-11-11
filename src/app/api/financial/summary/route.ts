@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requirePermission } from "@/lib/auth";
 import { handleApiError } from "@/lib/errors";
-import { startOfDayUtc, endOfDayUtc } from "@/lib/date";
+import { startOfDayUtc, endOfDayUtc, startOfMonthInZone } from "@/lib/date";
+import { serverEnv } from "@/lib/env";
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
@@ -12,8 +13,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const to = searchParams.get("to");
     const locationId = searchParams.get("locationId") ?? undefined;
 
-    const startDate = from ? startOfDayUtc(from) : new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-    const endDate = to ? endOfDayUtc(to) : new Date();
+    const now = new Date();
+    const startDate = from ? startOfDayUtc(from) : startOfMonthInZone(now, serverEnv().APP_TIMEZONE);
+    const endDate = to ? endOfDayUtc(to) : now;
 
     const dateFilter = { competenceDate: { gte: startDate, lte: endDate } };
 

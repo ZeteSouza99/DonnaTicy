@@ -58,7 +58,7 @@ Não há integração com gateway de pagamento. Os pagamentos são registrados c
 
 ## Ambiente e tarefas agendadas
 
-[src/lib/env.ts](../src/lib/env.ts) valida as variáveis do servidor na subida. Configuração inválida impede o servidor de iniciar. `CRON_SECRET` é obrigatório em produção. `APP_TIMEZONE` (padrão `America/Manaus`) é o fuso da loja: os KPIs do dashboard viram o mês nesse fuso, e não no do servidor, que na Vercel é UTC.
+[src/lib/env.ts](../src/lib/env.ts) valida as variáveis do servidor na subida. Configuração inválida impede o servidor de iniciar. `CRON_SECRET` é obrigatório em produção. `APP_TIMEZONE` (padrão `America/Manaus`) é o fuso da loja: os KPIs do dashboard e o período padrão do resumo e do relatório financeiro viram o mês nesse fuso, e não no do servidor, que na Vercel é UTC.
 
 A Vercel chama `GET /api/health` todo dia às 12:00 UTC ([vercel.json](../vercel.json)). Com o `CRON_SECRET` no cabeçalho `Authorization`, a rota roda a manutenção: expira pedidos pendentes e vales-troca vencidos e apaga tokens revogados e janelas de rate limit expiradas. Sem o cabeçalho, responde só o ping.
 

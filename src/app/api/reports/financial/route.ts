@@ -3,7 +3,8 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { requirePermission } from "@/lib/auth";
 import { handleApiError } from "@/lib/errors";
-import { startOfDayUtc, endOfDayUtc } from "@/lib/date";
+import { startOfDayUtc, endOfDayUtc, startOfMonthInZone } from "@/lib/date";
+import { serverEnv } from "@/lib/env";
 
 // Lista de lançamentos é limitada; DRE e agrupamentos cobrem o período inteiro.
 const MAX_ROWS = 5000;
@@ -15,7 +16,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const { searchParams } = new URL(request.url);
 
     const now = new Date();
-    const defaultFrom = new Date(now.getFullYear(), now.getMonth(), 1);
+    const defaultFrom = startOfMonthInZone(now, serverEnv().APP_TIMEZONE);
     const from = searchParams.get("from") ? startOfDayUtc(searchParams.get("from") as string) : defaultFrom;
     const to = searchParams.get("to") ? endOfDayUtc(searchParams.get("to") as string) : now;
     const where: Prisma.FinancialEntryWhereInput = {

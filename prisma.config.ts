@@ -7,10 +7,10 @@ import { defineConfig } from "prisma/config";
 config({ path: ".env.local" });
 
 /**
- * O runtime da aplicação usa o pooler transacional do Supabase (porta 6543/pgbouncer),
+ * O runtime da aplicação usa o endpoint com pooler do Neon (PgBouncer em modo transação),
  * que não suporta advisory locks e trava os comandos do Prisma Migrate.
- * Defina DIRECT_DATABASE_URL apontando para a conexão em modo sessão (porta 5432,
- * sem `pgbouncer=true`) para que migrations e introspecção funcionem.
+ * Defina DIRECT_DATABASE_URL apontando para o endpoint direto (mesmo host, sem `-pooler`)
+ * para que migrations e introspecção funcionem.
  */
 export default defineConfig({
   schema: "prisma/schema.prisma",
