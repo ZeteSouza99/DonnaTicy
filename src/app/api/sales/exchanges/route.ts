@@ -6,11 +6,13 @@ import { getPaginationParams, paginate } from "@/lib/pagination";
 import { createExchangeSchema } from "@/schemas/sales";
 import { createAuditLog, getClientIp } from "@/lib/audit";
 import { generateCode } from "@/lib/code-generator";
+import { fromCents, toCents } from "@/lib/money";
 import { lockOrder } from "@/services/order-lock";
-import { lockStockPositions } from "@/services/stock-lock";
+import { deductAvailableStock, lockStockPositions } from "@/services/stock-lock";
 
 const GENERIC_CUSTOMER_PHONE = "00000000000";
-const TOLERANCE = 0.01;
+/** Diferença, em centavos, até a qual a troca fecha sem cobrança nem vale-troca. */
+const TOLERANCE_CENTS = 1;
 
 interface ReturnedItemRecord {
   orderItemId: string;
@@ -109,7 +111,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       }
 
       // ---- Itens devolvidos: validação + ENTRADA de estoque ----
-      let amountReturned = 0;
+      let amountReturnedCents = 0;
       const returnedRecords: ReturnedItemRecord[] = [];
       const seenOrderItems = new Set<string>();
 
@@ -132,7 +134,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
         // Valor efetivamente pago por unidade (considera desconto do item)
         const unitValue = Number(orderItem.totalPrice) / orderItem.quantity;
-        amountReturned += unitValue * ret.quantity;
+        amountReturnedCents += Math.round((toCents(orderItem.totalPrice) * ret.quantity) / orderItem.quantity);
         returnedRecords.push({
           orderItemId: orderItem.id,
           variantId: orderItem.variantId,
@@ -143,7 +145,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       }
 
       // ---- Itens novos: preço atual ----
-      let amountNew = 0;
+      let amountNewCents = 0;
       const newRecords: NewItemRecord[] = [];
       for (const item of input.newItems) {
         const variant = await tx.productVariant.findFirst({
@@ -151,19 +153,22 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           include: { product: { select: { basePrice: true } } },
         });
         if (!variant) throw new ValidationError(`Variante ${item.variantId} não encontrada.`);
-        const unitPrice = Number(variant.product.basePrice) + Number(variant.additionalCost);
-        amountNew += unitPrice * item.quantity;
+        const unitPriceCents = toCents(variant.product.basePrice) + toCents(variant.additionalCost);
+        amountNewCents += unitPriceCents * item.quantity;
         newRecords.push({
           variantId: variant.id,
           sku: variant.sku,
           quantity: item.quantity,
-          unitPrice,
+          unitPrice: fromCents(unitPriceCents),
         });
       }
 
-      const difference = amountNew - amountReturned;
+      const differenceCents = amountNewCents - amountReturnedCents;
       const settlementType =
-        difference > TOLERANCE ? "CHARGED" : difference < -TOLERANCE ? "STORE_CREDIT" : "EVEN";
+        differenceCents > TOLERANCE_CENTS ? "CHARGED" : differenceCents < -TOLERANCE_CENTS ? "STORE_CREDIT" : "EVEN";
+      const amountReturned = fromCents(amountReturnedCents);
+      const amountNew = fromCents(amountNewCents);
+      const difference = fromCents(differenceCents);
 
       if (settlementType === "CHARGED" && !input.paymentMethod) {
         throw new ValidationError(
@@ -228,17 +233,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         });
       }
 
-      // SAÍDA dos itens novos (decremento atômico com guard)
+      // SAÍDA dos itens novos (decremento atômico com guard, sem consumir reserva)
       for (const item of newRecords) {
-        const deducted = await tx.stockPosition.updateMany({
-          where: {
-            variantId: item.variantId,
-            locationId: input.locationId,
-            quantity: { gte: item.quantity },
-          },
-          data: { quantity: { decrement: item.quantity } },
-        });
-        if (deducted.count === 0) {
+        const deducted = await deductAvailableStock(
+          tx,
+          { locationId: input.locationId, variantId: item.variantId },
+          item.quantity,
+        );
+        if (!deducted) {
           throw new ConflictError(
             `Estoque insuficiente para SKU ${item.sku}. Solicitado: ${item.quantity}.`,
           );

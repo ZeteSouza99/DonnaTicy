@@ -48,7 +48,7 @@ async function assertSchema(client: Client, url: string) {
   const history = await client.query(`SELECT migration_name FROM _prisma_migrations WHERE finished_at IS NOT NULL ORDER BY migration_name`);
   expect(history.rows.map((row) => row.migration_name)).toEqual([
     "0_init", "20260921000100_security_and_search", "20260921000200_order_cancellation",
-    "20260926000100_auth_hardening", "20260926000200_money_decimal",
+    "20260926000100_auth_hardening", "20260926000200_money_decimal", "20261110000100_stock_position_checks",
   ]);
 }
 

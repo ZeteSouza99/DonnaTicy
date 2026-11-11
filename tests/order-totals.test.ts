@@ -23,6 +23,11 @@ describe("calculateCouponDiscount", () => {
   it("ignora valores negativos", () => {
     expect(calculateCouponDiscount(80, "AMOUNT", -10)).toBe(0);
   });
+
+  it("arredonda o percentual para centavos", () => {
+    expect(calculateCouponDiscount(99.9, "PERCENT", 15)).toBe(14.99);
+    expect(calculateCouponDiscount(33.33, "PERCENT", 10)).toBe(3.33);
+  });
 });
 
 describe("capManualDiscount", () => {
@@ -42,6 +47,10 @@ describe("capManualDiscount", () => {
     expect(capManualDiscount(-40, 200, 0)).toBe(0);
     expect(capManualDiscount(10, 100, 300)).toBe(0);
   });
+
+  it("calcula o restante em centavos, sem resíduo de ponto flutuante", () => {
+    expect(capManualDiscount(0.2, 0.3, 0.1)).toBe(0.2);
+  });
 });
 
 describe("paymentsCoverTotal", () => {
@@ -60,6 +69,13 @@ describe("paymentsCoverTotal", () => {
 
   it("rejeita pagamento a mais fora da tolerância", () => {
     expect(paymentsCoverTotal(250, 199.9)).toBe(false);
+  });
+
+  it("aceita exatamente um centavo de diferença e rejeita dois", () => {
+    expect(paymentsCoverTotal(99.99, 100)).toBe(true);
+    expect(paymentsCoverTotal(100.01, 100)).toBe(true);
+    expect(paymentsCoverTotal(99.98, 100)).toBe(false);
+    expect(paymentsCoverTotal(100.02, 100)).toBe(false);
   });
 });
 

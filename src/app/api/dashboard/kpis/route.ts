@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requirePermission } from "@/lib/auth";
+import { startOfMonthInZone } from "@/lib/date";
+import { serverEnv } from "@/lib/env";
 import { handleApiError } from "@/lib/errors";
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
@@ -10,9 +12,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const locationId = searchParams.get("locationId") ?? undefined;
 
     const now = new Date();
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const startOfPreviousMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const endOfPreviousMonth = new Date(now.getFullYear(), now.getMonth(), 0);
+    const { APP_TIMEZONE } = serverEnv();
+    const startOfMonth = startOfMonthInZone(now, APP_TIMEZONE);
+    const startOfPreviousMonth = startOfMonthInZone(now, APP_TIMEZONE, -1);
 
     const locationFilter = locationId ? { locationId } : {};
 
@@ -43,7 +45,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       prisma.order.aggregate({
         where: {
           deletedAt: null,
-          placedAt: { gte: startOfPreviousMonth, lte: endOfPreviousMonth },
+          placedAt: { gte: startOfPreviousMonth, lt: startOfMonth },
           status: { not: "CANCELLED" },
           ...locationFilter,
         },

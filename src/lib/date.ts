@@ -45,3 +45,32 @@ export function toLocalDateInputValue(date: Date): string {
 export function todayInputValue(): string {
   return toLocalDateInputValue(new Date());
 }
+
+/** Diferença, em ms, entre o relógio de parede do fuso e o UTC no instante dado. */
+function zoneOffsetMs(instant: number, timeZone: string): number {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    hourCycle: "h23",
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+    hour: "numeric",
+    minute: "numeric",
+    second: "numeric",
+  }).formatToParts(instant);
+  const part = (type: Intl.DateTimeFormatPartTypes) => Number(parts.find((p) => p.type === type)?.value);
+  const wallClock = Date.UTC(part("year"), part("month") - 1, part("day"), part("hour"), part("minute"), part("second"));
+  return wallClock - Math.floor(instant / 1000) * 1000;
+}
+
+/**
+ * Instante em que o mês começa no fuso informado, e não no fuso do servidor
+ * (UTC na Vercel). `monthOffset` desloca meses inteiros a partir do mês de `reference`.
+ */
+export function startOfMonthInZone(reference: Date, timeZone: string, monthOffset = 0): Date {
+  const wall = new Date(reference.getTime() + zoneOffsetMs(reference.getTime(), timeZone));
+  const localMidnight = Date.UTC(wall.getUTCFullYear(), wall.getUTCMonth() + monthOffset, 1);
+  // O deslocamento do dia 1º pode diferir do de hoje (horário de verão): recalcula no instante encontrado.
+  const guess = localMidnight - zoneOffsetMs(localMidnight, timeZone);
+  return new Date(localMidnight - zoneOffsetMs(guess, timeZone));
+}

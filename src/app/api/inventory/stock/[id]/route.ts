@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requirePermission } from "@/lib/auth";
-import { handleApiError, NotFoundError } from "@/lib/errors";
+import { handleApiError, NotFoundError, ValidationError } from "@/lib/errors";
 import { updateStockPositionSchema } from "@/schemas/inventory";
 import { createAuditLog, getClientIp } from "@/lib/audit";
 
@@ -49,9 +49,17 @@ export async function PATCH(request: NextRequest, { params }: RouteParams): Prom
     const body = await request.json();
     const input = updateStockPositionSchema.parse(body);
 
-    const updated = await prisma.stockPosition.update({
-      where: { id },
+    // Baixar o físico abaixo do reservado deixaria pedidos pagos sem peça para separar.
+    const adjusted = await prisma.stockPosition.updateMany({
+      where: { id, ...(input.quantity !== undefined && { reservedQty: { lte: input.quantity } }) },
       data: input,
+    });
+    if (adjusted.count === 0) {
+      throw new ValidationError("A quantidade não pode ficar abaixo do saldo reservado para pedidos.");
+    }
+
+    const updated = await prisma.stockPosition.findUniqueOrThrow({
+      where: { id },
       include: {
         variant: {
           select: {

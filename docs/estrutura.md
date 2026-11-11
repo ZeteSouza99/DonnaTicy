@@ -30,9 +30,6 @@ Separar o projeto da DonnaTicy do projeto da Alldav para evitar:
 - DIRECT_DATABASE_URL
 - JWT_SECRET
 - MFA_ENCRYPTION_KEY
-- SMTP_USER / SMTP_PASS
-- S3_ACCESS_KEY / S3_SECRET_KEY
-- STRIPE_SECRET_KEY
-- PIX_PROVIDER_KEY
+- CRON_SECRET
 
 Esses valores devem ser preenchidos no `.env.local` real, nunca no repositório público.

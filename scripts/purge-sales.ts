@@ -46,9 +46,15 @@ const REPORT: { label: string; sql: string }[] = [
 
 /**
  * Passos executados na transação. Ordem importa:
- * estoque é restaurado ANTES de apagar os movimentos que o descrevem.
+ * - a reserva é zerada primeiro, porque o banco recusa reserved_qty acima de quantity
+ *   e o estorno abaixo pode reduzir a quantidade;
+ * - o estoque é restaurado ANTES de apagar os movimentos que o descrevem.
  */
 const STEPS: { label: string; sql: string }[] = [
+  {
+    label: "Zera as quantidades reservadas",
+    sql: `UPDATE stock_positions SET reserved_qty = 0 WHERE reserved_qty <> 0`,
+  },
   {
     label: "Devolve ao estoque as saídas de venda",
     sql: `
@@ -76,10 +82,6 @@ const STEPS: { label: string; sql: string }[] = [
       ) agg
       WHERE sp.variant_id = agg.variant_id AND sp.location_id = agg.location_id
     `,
-  },
-  {
-    label: "Zera as quantidades reservadas",
-    sql: `UPDATE stock_positions SET reserved_qty = 0 WHERE reserved_qty <> 0`,
   },
   {
     label: "Remove trocas e seus vales-troca",

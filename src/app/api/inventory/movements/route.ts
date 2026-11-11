@@ -7,6 +7,7 @@ import { getPaginationParams, paginate } from "@/lib/pagination";
 import { createStockMovementSchema } from "@/schemas/inventory";
 import { createAuditLogTx, getClientIp } from "@/lib/audit";
 import { parseEnumParam } from "@/lib/query-params";
+import { deductAvailableStock, lockStockPositions } from "@/services/stock-lock";
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
@@ -66,25 +67,25 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     if (!variant) throw new NotFoundError("Variante");
 
     const movement = await prisma.$transaction(async (tx) => {
+      await lockStockPositions(
+        tx,
+        [input.fromLocationId, input.toLocationId]
+          .filter((locationId): locationId is string => Boolean(locationId))
+          .map((locationId) => ({ locationId, variantId: input.variantId })),
+      );
+
       // Decrease from source
       if (input.fromLocationId) {
-        const position = await tx.stockPosition.findUnique({
-          where: {
-            variantId_locationId: {
-              variantId: input.variantId,
-              locationId: input.fromLocationId,
-            },
-          },
-        });
-
-        if (!position || position.quantity < input.quantity) {
-          throw new ValidationError("Estoque insuficiente na localização de origem.");
+        const deducted = await deductAvailableStock(
+          tx,
+          { locationId: input.fromLocationId, variantId: input.variantId },
+          input.quantity,
+        );
+        if (!deducted) {
+          throw new ValidationError(
+            "Estoque insuficiente na localização de origem (peças reservadas para pedidos não podem ser movimentadas).",
+          );
         }
-
-        await tx.stockPosition.update({
-          where: { id: position.id },
-          data: { quantity: { decrement: input.quantity } },
-        });
       }
 
       // Increase at destination

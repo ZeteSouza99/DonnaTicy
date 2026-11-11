@@ -9,14 +9,18 @@ import {
   paymentsCoverTotal,
 } from "@/lib/order-totals";
 import { REQUIRE_DISCOUNT_APPROVAL } from "@/lib/features";
+import { fromCents, toCents } from "@/lib/money";
 import { can } from "@/lib/permissions";
 import { createOrderSchema } from "@/schemas/sales";
 import { createAuditLogTx } from "@/lib/audit";
 import { generateCode } from "@/lib/code-generator";
 import type { JwtPayload } from "@/lib/auth";
-import { lockStockPositions } from "./stock-lock";
+import { deductAvailableStock, lockStockPositions } from "./stock-lock";
 
 export type CreateOrderInput = z.infer<typeof createOrderSchema>;
+
+/** Diferença aceita entre o desconto digitado no PDV e o aprovado. */
+const DISCOUNT_TOLERANCE_CENTS = 1;
 
 interface CreateOrderContext {
   input: CreateOrderInput;
@@ -91,7 +95,7 @@ export async function createOrder(
 
   // Validate coupon if provided (desconto calculado após o subtotal)
   let couponId: string | undefined;
-  let couponDiscount = 0;
+  let couponDiscountCents = 0;
   let coupon: Awaited<ReturnType<typeof tx.coupon.findFirst>> = null;
   if (input.couponCode) {
     coupon = await tx.coupon.findFirst({
@@ -107,8 +111,8 @@ export async function createOrder(
     couponId = coupon.id;
   }
 
-  // Build items and calculate totals
-  let subtotal = 0;
+  // Build items and calculate totals (em centavos inteiros; o banco recebe o valor já fechado)
+  let subtotalCents = 0;
   const orderItems: Array<{
     variantId: string;
     quantity: number;
@@ -130,32 +134,26 @@ export async function createOrder(
 
     if (!variant) throw new ValidationError(`Variante ${item.variantId} não encontrada.`);
 
-    const unitPrice = Number(variant.product.basePrice) + Number(variant.additionalCost);
-    const totalPrice = unitPrice * item.quantity;
-    subtotal += totalPrice;
+    const unitPriceCents = toCents(variant.product.basePrice) + toCents(variant.additionalCost);
+    const totalPriceCents = unitPriceCents * item.quantity;
+    subtotalCents += totalPriceCents;
 
     orderItems.push({
       variantId: item.variantId,
       quantity: item.quantity,
-      unitPrice,
+      unitPrice: fromCents(unitPriceCents),
       discount: 0,
-      totalPrice,
+      totalPrice: fromCents(totalPriceCents),
       costPrice: Number(variant.product.costPrice),
     });
 
     // Baixa de estoque conforme o canal:
-    // - STORE (PDV): saída imediata — decremento atômico com guard (o item sai no balcão)
+    // - STORE (PDV): saída imediata — decremento atômico com guard (o item sai no balcão),
+    //   sem tocar no que já está reservado para pedidos remotos
     // - demais canais: reserva (convertida em baixa no PICKING)
     if (input.channel === "STORE") {
-      const deducted = await tx.stockPosition.updateMany({
-        where: {
-          variantId: item.variantId,
-          locationId,
-          quantity: { gte: item.quantity },
-        },
-        data: { quantity: { decrement: item.quantity } },
-      });
-      if (deducted.count === 0) {
+      const deducted = await deductAvailableStock(tx, { locationId, variantId: item.variantId }, item.quantity);
+      if (!deducted) {
         throw new ConflictError(
           `Estoque insuficiente para SKU ${variant.sku}. Solicitado: ${item.quantity}.`,
         );
@@ -176,19 +174,21 @@ export async function createOrder(
     }
   }
 
+  const subtotal = fromCents(subtotalCents);
+
   // Apply coupon discount over the computed subtotal
   if (coupon) {
     const minOrderValue = Number(coupon.minOrderValue ?? 0);
-    if (minOrderValue > 0 && subtotal < minOrderValue) {
+    if (minOrderValue > 0 && subtotalCents < toCents(minOrderValue)) {
       throw new ValidationError(
         `Cupom exige pedido mínimo de R$ ${minOrderValue.toFixed(2)}.`,
       );
     }
-    couponDiscount = calculateCouponDiscount(
+    couponDiscountCents = toCents(calculateCouponDiscount(
       subtotal,
       coupon.discountType === "PERCENTAGE" ? "PERCENT" : "AMOUNT",
       Number(coupon.discountValue),
-    );
+    ));
 
     // Incremento atômico respeitando maxUses
     const usage = await tx.coupon.updateMany({
@@ -203,9 +203,11 @@ export async function createOrder(
 
   // Desconto manual (PDV): admin é livre; SELLER exige aprovação remota
   // válida (APPROVED, do próprio caixa, não expirada, valor batendo) e de uso único.
-  const manualDiscount = capManualDiscount(input.discount ?? 0, subtotal, couponDiscount);
+  const manualDiscountCents = toCents(
+    capManualDiscount(input.discount ?? 0, subtotal, fromCents(couponDiscountCents)),
+  );
   let usedApprovalId: string | null = null;
-  if (REQUIRE_DISCOUNT_APPROVAL && session.role === "SELLER" && manualDiscount > 0) {
+  if (REQUIRE_DISCOUNT_APPROVAL && session.role === "SELLER" && manualDiscountCents > 0) {
     if (!input.discountApprovalId) {
       throw new ForbiddenError("Desconto no PDV requer aprovação de um administrador.");
     }
@@ -221,14 +223,14 @@ export async function createOrder(
     if (isDiscountRequestExpired(approval.createdAt)) {
       throw new ValidationError("Aprovação de desconto expirada (mais de 30 minutos).");
     }
-    const expected = calculateDiscount(
+    const expectedCents = toCents(calculateDiscount(
       subtotal,
       approval.discountType === "PERCENT" ? "PERCENT" : "AMOUNT",
       Number(approval.discountValue),
-    ).discountAmount;
-    if (Math.abs(expected - manualDiscount) > 0.01) {
+    ).discountAmount);
+    if (Math.abs(expectedCents - manualDiscountCents) > DISCOUNT_TOLERANCE_CENTS) {
       throw new ValidationError(
-        `Desconto informado (R$ ${manualDiscount.toFixed(2)}) difere do aprovado (R$ ${expected.toFixed(2)}).`,
+        `Desconto informado (R$ ${fromCents(manualDiscountCents).toFixed(2)}) difere do aprovado (R$ ${fromCents(expectedCents).toFixed(2)}).`,
       );
     }
     // Uso único: guard atômico APPROVED -> APPLIED
@@ -242,10 +244,10 @@ export async function createOrder(
     usedApprovalId = approval.id;
   }
 
-  const totalAfterCoupon = subtotal - couponDiscount - manualDiscount;
+  const totalAfterDiscountsCents = subtotalCents - couponDiscountCents - manualDiscountCents;
 
   // Vale-troca (store credit): abatimento atômico com guard de saldo
-  let storeCreditUsed = 0;
+  let storeCreditUsedCents = 0;
   let usedStoreCreditId: string | undefined;
   if (input.storeCreditCode) {
     if (!input.customerId) {
@@ -266,8 +268,10 @@ export async function createOrder(
       // O status EXPIRED é gravado pelo cron: aqui o throw desfaria a alteração.
       throw new ValidationError("Vale-troca expirado.");
     }
-    storeCreditUsed = Math.min(Number(credit.remainingAmount), totalAfterCoupon);
-    if (storeCreditUsed > 0) {
+    const creditRemainingCents = toCents(credit.remainingAmount);
+    storeCreditUsedCents = Math.min(creditRemainingCents, totalAfterDiscountsCents);
+    if (storeCreditUsedCents > 0) {
+      const storeCreditUsed = fromCents(storeCreditUsedCents);
       const debited = await tx.storeCredit.updateMany({
         where: { id: credit.id, remainingAmount: { gte: storeCreditUsed } },
         data: { remainingAmount: { decrement: storeCreditUsed } },
@@ -275,19 +279,18 @@ export async function createOrder(
       if (debited.count === 0) {
         throw new ConflictError("Saldo do vale-troca insuficiente.");
       }
-      const newRemaining = Number(credit.remainingAmount) - storeCreditUsed;
       await tx.storeCredit.update({
         where: { id: credit.id },
-        data: { status: newRemaining <= 0.009 ? "USED" : "PARTIALLY_USED" },
+        data: { status: creditRemainingCents === storeCreditUsedCents ? "USED" : "PARTIALLY_USED" },
       });
       usedStoreCreditId = credit.id;
     }
   }
 
-  const total = totalAfterCoupon - storeCreditUsed;
+  const total = fromCents(totalAfterDiscountsCents - storeCreditUsedCents);
 
   // Validate payments cover the total
-  const paymentSum = input.payments.reduce((sum, p) => sum + p.amount, 0);
+  const paymentSum = fromCents(input.payments.reduce((sum, p) => sum + toCents(p.amount), 0));
   if (!paymentsCoverTotal(paymentSum, total)) {
     throw new ValidationError(
       `Soma dos pagamentos (R$ ${paymentSum.toFixed(2)}) difere do total do pedido (R$ ${total.toFixed(2)}).`,
@@ -306,7 +309,7 @@ export async function createOrder(
       locationId,
       sellerId,
       subtotal,
-      discountTotal: couponDiscount + manualDiscount + storeCreditUsed,
+      discountTotal: fromCents(couponDiscountCents + manualDiscountCents + storeCreditUsedCents),
       shippingCost: 0,
       total,
       status: isPaid ? (isCounterSale ? "DELIVERED" : "PAID") : "PENDING_PAYMENT",
@@ -316,7 +319,7 @@ export async function createOrder(
       deliveryMethod: input.deliveryMethod,
       couponId,
       usedStoreCreditId,
-      usedStoreCreditAmount: storeCreditUsed,
+      usedStoreCreditAmount: fromCents(storeCreditUsedCents),
       notes: input.notes,
       items: {
         create: orderItems,
@@ -395,7 +398,9 @@ export async function createOrder(
     data: {
       totalOrders: { increment: 1 },
       lifetimeValue: { increment: total },
-      avgTicket: (Number(customer.lifetimeValue) + total) / (customer.totalOrders + 1),
+      avgTicket: fromCents(
+        Math.round((toCents(customer.lifetimeValue) + toCents(total)) / (customer.totalOrders + 1)),
+      ),
       lastPurchaseAt: new Date(),
       firstPurchaseAt: customer.firstPurchaseAt ?? new Date(),
     },

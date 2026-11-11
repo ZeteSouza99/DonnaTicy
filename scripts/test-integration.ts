@@ -42,7 +42,9 @@ async function main(): Promise<void> {
     user: "donnaticy_test",
     password,
     authMethod: "scram-sha-256",
-    persistent: false,
+    // No Windows, stop() retorna antes de os processos filhos do PostgreSQL saírem, e com
+    // persistent: false a biblioteca apaga a pasta sem nova tentativa (EBUSY). O runner apaga.
+    persistent: true,
     createPostgresUser: false,
     initdbFlags: ["--encoding=UTF8", "--locale=C"],
     postgresFlags: ["-h", "127.0.0.1", "-c", "shared_buffers=32MB", "-c", "max_connections=20"],
@@ -83,7 +85,7 @@ async function main(): Promise<void> {
     ], env);
   } finally {
     await postgres.stop();
-    await rm(directory, { recursive: true, force: true });
+    await rm(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     console.log("PostgreSQL de teste encerrado e dados temporários removidos.");
   }
 }

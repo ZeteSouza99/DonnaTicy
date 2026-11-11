@@ -61,3 +61,6 @@ cookies.txt
 # backups locais do banco (dados reais) e scripts temporários de manutenção
 /.db-backup/
 /scripts/tmp-*.mjs
+
+# planilhas de importação com dados reais: ficam só no disco
+/docs/import-template/

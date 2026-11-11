@@ -629,3 +629,97 @@ describe("local, vendedor e pagamento pendente", () => {
     expect(await prisma.storeCredit.findUniqueOrThrow({ where: { id: credit.id } })).toMatchObject({ status: "EXPIRED", remainingAmount: 50 });
   });
 });
+describe("totais da venda em centavos", () => {
+  it("fecha subtotal, desconto percentual e total sem sobrar um centavo", async () => {
+    await prisma.product.update({ where: { id: fixture.product.id }, data: { basePrice: 99.9 } });
+    const coupon = await prisma.coupon.create({ data: { code: "QUINZE", discountType: "PERCENTAGE", discountValue: 15, validFrom: new Date("2000-01-01"), validUntil: new Date("2100-01-01") } });
+    const order = await sell({
+      channel: "STORE", couponCode: coupon.code,
+      items: [{ variantId: fixture.variant.id, quantity: 1 }], payments: [{ method: "PIX", amount: 84.91 }],
+    });
+    expect(await prisma.order.findUniqueOrThrow({ where: { id: order.id } })).toMatchObject({ subtotal: 99.9, discountTotal: 14.99, total: 84.91 });
+    expect(await prisma.financialEntry.findFirstOrThrow({ where: { orderId: order.id } })).toMatchObject({ amount: 84.91 });
+    expect(await prisma.customer.findUniqueOrThrow({ where: { id: fixture.customer.id } })).toMatchObject({ lifetimeValue: 84.91, avgTicket: 84.91 });
+  });
+
+  it("aceita pagamento dividido que difere do total em exatamente um centavo", async () => {
+    const order = await sell({
+      channel: "STORE", items: [{ variantId: fixture.variant.id, quantity: 1 }],
+      payments: [{ method: "PIX", amount: 33.33 }, { method: "CASH", amount: 33.33 }, { method: "DEBIT", amount: 33.33 }],
+    });
+    expect(order).toMatchObject({ total: 100 });
+  });
+});
+
+describe("centavos em troca, devolução e cancelamento", () => {
+  async function variantDearerBy(additionalCost: number) {
+    const variant = await secondVariant();
+    return prisma.productVariant.update({ where: { id: variant.id }, data: { additionalCost } });
+  }
+
+  async function soldItem(variantId: string, amount: number) {
+    const order = await sell({ channel: "STORE", items: [{ variantId, quantity: 1 }], payments: [{ method: "PIX", amount }] });
+    return prisma.orderItem.findFirstOrThrow({ where: { orderId: order.id } });
+  }
+
+  function exchange(item: { id: string; orderId: string }, newVariantId: string, extra: Record<string, unknown> = {}) {
+    return createExchange(request("POST", "/api/sales/exchanges", fixture.token, {
+      orderId: item.orderId, locationId: fixture.location.id,
+      returnedItems: [{ orderItemId: item.id, quantity: 1 }], newItems: [{ variantId: newVariantId, quantity: 1 }], ...extra,
+    }));
+  }
+
+  it("troca por peça um centavo mais barata fecha sem gerar vale-troca", async () => {
+    const dearer = await variantDearerBy(0.01);
+    const response = await exchange(await soldItem(dearer.id, 100.01), fixture.variant.id);
+    expect(response.status).toBe(201);
+    expect((await response.json()).settlementType).toBe("EVEN");
+    expect(await prisma.storeCredit.count()).toBe(0);
+  });
+
+  it("troca por peça um centavo mais cara fecha sem cobrança", async () => {
+    const dearer = await variantDearerBy(0.01);
+    const item = await soldItem(fixture.variant.id, 100);
+    const response = await exchange(item, dearer.id);
+    expect(response.status).toBe(201);
+    expect((await response.json()).settlementType).toBe("EVEN");
+    expect(await prisma.paymentTransaction.count({ where: { orderId: item.orderId } })).toBe(1);
+  });
+
+  it("troca com dois centavos de diferença cobra exatamente os dois centavos", async () => {
+    const dearer = await variantDearerBy(0.02);
+    const item = await soldItem(fixture.variant.id, 100);
+    expect((await exchange(item, dearer.id)).status).toBe(400);
+    const response = await exchange(item, dearer.id, { paymentMethod: "PIX" });
+    expect(response.status).toBe(201);
+    expect(await response.json()).toMatchObject({ settlementType: "CHARGED", difference: 0.02 });
+    expect(await prisma.financialEntry.findFirstOrThrow({ where: { orderId: item.orderId, category: "EXCHANGE" } })).toMatchObject({ amount: 0.02 });
+  });
+
+  it("devolução aceita reembolso até um centavo acima do valor dos itens e recusa dois", async () => {
+    await prisma.product.update({ where: { id: fixture.product.id }, data: { basePrice: 33.33 } });
+    const order = await sell({ channel: "STORE", items: [{ variantId: fixture.variant.id, quantity: 3 }], payments: [{ method: "PIX", amount: 99.99 }] });
+    const item = await prisma.orderItem.findFirstOrThrow({ where: { orderId: order.id } });
+    const created = await createReturn(request("POST", "/api/logistics/returns", fixture.token, {
+      orderId: order.id, customerId: fixture.customer.id, type: "RETURN",
+      items: [{ orderItemId: item.id, variantId: item.variantId, quantity: 2, reason: "REGRET" }],
+    }));
+    expect(created.status).toBe(201);
+    const { id } = await created.json();
+    // Dois itens de 33,33 valem 66,66.
+    expect((await resolve(id, { refundAmount: 66.68 })).status).toBe(400);
+    expect((await resolve(id, { refundAmount: 33.33, storeCreditAmount: 33.34 })).status).toBe(200);
+    expect(await prisma.financialEntry.findMany({ where: { orderId: order.id, type: "REFUND" } })).toMatchObject([{ amount: 33.33 }]);
+  });
+
+  it("cancela venda paga em três parcelas de 33,33 e registra reembolso de 99,99", async () => {
+    const order = await sell({
+      items: [{ variantId: fixture.variant.id, quantity: 1 }],
+      payments: [{ method: "PIX", amount: 33.33 }, { method: "CASH", amount: 33.33 }, { method: "DEBIT", amount: 33.33 }],
+    });
+    expect((await transition(order.id)).status).toBe(200);
+    expect((await refundFor(order.id)).amount).toEqual(99.99);
+    expect(await prisma.paymentTransaction.count({ where: { orderId: order.id, status: "REFUND_PENDING" } })).toBe(3);
+    expect(await stock()).toMatchObject({ quantity: 10, reservedQty: 0 });
+  });
+});

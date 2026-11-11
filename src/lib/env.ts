@@ -2,18 +2,39 @@ import { z } from "./zod";
 
 const DURATION_PATTERN = /^\d+[smhd]?$/;
 
-const serverEnvSchema = z.object({
-  NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
-  DATABASE_URL: z.string().min(1, "defina a URL de conexão do PostgreSQL."),
-  JWT_SECRET: z.string().min(32, "use no mínimo 32 caracteres."),
-  JWT_EXPIRES_IN: z
-    .string()
-    .regex(DURATION_PATTERN, "use segundos ou o formato 30m, 8h, 1d.")
-    .default("8h"),
-  CRON_SECRET: z.string().min(16, "use no mínimo 16 caracteres.").optional(),
-  MFA_ENCRYPTION_KEY: z.string().min(32, "use no mínimo 32 caracteres.").optional(),
-  PENDING_ORDER_TTL_HOURS: z.coerce.number().int().positive().default(48),
-});
+function isTimeZone(value: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: value });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+const serverEnvSchema = z
+  .object({
+    NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+    DATABASE_URL: z.string().min(1, "defina a URL de conexão do PostgreSQL."),
+    JWT_SECRET: z.string().min(32, "use no mínimo 32 caracteres."),
+    JWT_EXPIRES_IN: z
+      .string()
+      .regex(DURATION_PATTERN, "use segundos ou o formato 30m, 8h, 1d.")
+      .default("8h"),
+    CRON_SECRET: z.string().min(16, "use no mínimo 16 caracteres.").optional(),
+    MFA_ENCRYPTION_KEY: z.string().min(32, "use no mínimo 32 caracteres.").optional(),
+    PENDING_ORDER_TTL_HOURS: z.coerce.number().int().positive().default(48),
+    // Fuso da loja: define em que instante o mês vira nos indicadores.
+    APP_TIMEZONE: z
+      .string()
+      .refine(isTimeZone, "use um fuso IANA, como America/Manaus.")
+      .default("America/Manaus"),
+  })
+  .superRefine((env, ctx) => {
+    // Sem ele o cron diário não roda: pedidos pendentes nunca expiram nem liberam a reserva.
+    if (env.NODE_ENV === "production" && !env.CRON_SECRET) {
+      ctx.addIssue({ code: "custom", path: ["CRON_SECRET"], message: "obrigatório em produção." });
+    }
+  });
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;
 

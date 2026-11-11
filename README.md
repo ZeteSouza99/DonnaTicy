@@ -19,8 +19,9 @@ Esta pasta foi criada como uma cópia funcional da estrutura principal, sem mant
 
 1. Copie `.env.example` para `.env.local`.
 2. Ajuste as credenciais reais do banco da DonnaTicy.
-3. Defina `JWT_SECRET`, `MFA_ENCRYPTION_KEY`, SMTP, S3, Stripe e Pix.
-4. Não versionar o `.env.local` real.
+3. Defina `JWT_SECRET` (32 caracteres ou mais) e `MFA_ENCRYPTION_KEY`.
+4. Em produção, defina também `CRON_SECRET` (16 caracteres ou mais). Sem ele o servidor não sobe, porque a manutenção diária depende dele.
+5. Não versionar o `.env.local` real.
 
 ## Comandos
 
@@ -35,6 +36,11 @@ npm run dev
 - `DATABASE_URL` para runtime
 - `DIRECT_DATABASE_URL` para migrações
 - nunca reutilizar o banco da Alldav em produção da DonnaTicy
+- `npm run build` não aplica migrações: rode `npm run db:deploy` contra o banco antes de publicar código que dependa delas
+
+## Arquitetura
+
+[docs/arquitetura.md](./docs/arquitetura.md) descreve o sistema como ele está hoje. Os arquivos em `docs/architecture/` são a visão-alvo herdada da Alldav e não descrevem a implementação atual.
 
 ## Branding
 

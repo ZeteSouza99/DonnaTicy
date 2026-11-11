@@ -13,6 +13,12 @@ describe("parseServerEnv", () => {
     expect(env.JWT_EXPIRES_IN).toBe("8h");
     expect(env.PENDING_ORDER_TTL_HOURS).toBe(48);
     expect(env.CRON_SECRET).toBeUndefined();
+    expect(env.APP_TIMEZONE).toBe("America/Manaus");
+  });
+
+  it("aceita outro fuso IANA e recusa um fuso inexistente", () => {
+    expect(parseServerEnv({ ...BASE, APP_TIMEZONE: "America/Sao_Paulo" }).APP_TIMEZONE).toBe("America/Sao_Paulo");
+    expect(() => parseServerEnv({ ...BASE, APP_TIMEZONE: "Manaus" })).toThrow(/APP_TIMEZONE/);
   });
 
   it("trata string vazia como ausente e converte números", () => {
@@ -25,6 +31,13 @@ describe("parseServerEnv", () => {
     expect(() => parseServerEnv({ ...BASE, JWT_SECRET: "curto" })).toThrow(/JWT_SECRET/);
     expect(() => parseServerEnv({ JWT_SECRET: BASE.JWT_SECRET })).toThrow(/DATABASE_URL/);
     expect(() => parseServerEnv({ ...BASE, JWT_EXPIRES_IN: "8 horas" })).toThrow(/JWT_EXPIRES_IN/);
+  });
+
+  it("exige CRON_SECRET em produção, onde a manutenção diária depende dele", () => {
+    expect(() => parseServerEnv({ ...BASE, NODE_ENV: "production" })).toThrow(/CRON_SECRET/);
+    expect(() => parseServerEnv({ ...BASE, NODE_ENV: "production", CRON_SECRET: "" })).toThrow(/CRON_SECRET/);
+    const env = parseServerEnv({ ...BASE, NODE_ENV: "production", CRON_SECRET: "c".repeat(16) });
+    expect(env.CRON_SECRET).toBe("c".repeat(16));
   });
 });
 

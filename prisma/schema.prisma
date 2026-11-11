@@ -761,6 +761,8 @@ model Location {
   @@map("locations")
 }
 
+// O banco garante quantity >= 0 e 0 <= reserved_qty <= quantity por CHECK
+// (migração 20261110000100_stock_position_checks); o Prisma não modela CHECK.
 model StockPosition {
   id          String    @id @default(cuid()) @map("id")
   variantId   String    @map("variant_id")
