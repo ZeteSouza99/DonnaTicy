@@ -2,10 +2,11 @@ const { execFile } = require('child_process')
 const fs = require('fs')
 const path = require('path')
 const os = require('os')
+const { randomUUID } = require('crypto')
 
 function printRaw(printerName, buffer) {
   return new Promise((resolve, reject) => {
-    const tmpFile = path.join(os.tmpdir(), `pdv-receipt-${Date.now()}.bin`)
+    const tmpFile = path.join(os.tmpdir(), `donnaticy-receipt-${randomUUID()}.bin`)
     fs.writeFileSync(tmpFile, buffer)
 
     const psScript = path.join(__dirname, 'raw-printer.ps1')
@@ -15,7 +16,7 @@ function printRaw(printerName, buffer) {
       '-File', psScript,
       '-FilePath', tmpFile,
       '-PrinterName', printerName
-    ], { timeout: 10000 }, (error, stdout, stderr) => {
+    ], { timeout: 10000, windowsHide: true }, (error, stdout, stderr) => {
       try { fs.unlinkSync(tmpFile) } catch {}
 
       if (error) {

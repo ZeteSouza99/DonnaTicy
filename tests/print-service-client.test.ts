@@ -11,7 +11,7 @@ describe("teste de impressão pelo site", () => {
     vi.stubGlobal("fetch", fetch);
     expect(await printTestReceipt()).toBe("MP-4200 TH");
     expect(fetch.mock.calls.map(([url]) => url)).toEqual([
-      "http://127.0.0.1:5555/status", "http://127.0.0.1:5555/print",
+      "http://127.0.0.1:15555/status", "http://127.0.0.1:15555/print",
     ]);
     const payload = JSON.parse(fetch.mock.calls[1][1].body);
     expect(payload.data.code).toBe("TESTE-WEB-USB");

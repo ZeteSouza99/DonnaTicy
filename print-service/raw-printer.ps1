@@ -49,7 +49,7 @@ public class RawPrinterHelper
 
         var di = new DOCINFOA
         {
-            pDocName = "PDV Recibo",
+            pDocName = "Donna Ticy Recibo",
             pDataType = "RAW"
         };
 
@@ -77,7 +77,7 @@ public class RawPrinterHelper
         EndDocPrinter(hPrinter);
         ClosePrinter(hPrinter);
 
-        return ok;
+        return ok && written == data.Length;
     }
 }
 "@

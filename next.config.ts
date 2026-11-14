@@ -3,7 +3,7 @@ import type { NextConfig } from "next";
 const isProduction = process.env.NODE_ENV === "production";
 const receiptPrinting = process.env.NEXT_PUBLIC_FEATURE_RECEIPT_PRINTING === "true";
 // Deve bater com PRINT_SERVICE_URL em src/lib/print.ts.
-const printServiceOrigin = "http://127.0.0.1:5555";
+const printServiceOrigin = "http://127.0.0.1:15555";
 
 /**
  * CSP compatível com o runtime do Next (App Router).

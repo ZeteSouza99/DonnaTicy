@@ -2,7 +2,7 @@
  * Impressão de comprovante de venda (não fiscal) — Bematech MP-4200 TH.
  *
  * Estratégia (mesma estrutura do PDV Martcell):
- * 1. Tenta o serviço local de impressão (print-service/) em http://127.0.0.1:5555 → ESC/POS bruto.
+ * 1. Tenta o serviço local de impressão (print-service/) em http://127.0.0.1:15555 → ESC/POS bruto.
  * 2. Se o serviço não estiver disponível, cai para impressão HTML 80mm via window.print().
  *
  * Habilitada por deploy via NEXT_PUBLIC_FEATURE_RECEIPT_PRINTING (ver lib/features.ts).
@@ -16,7 +16,7 @@ export type { SaleReceiptData, ReceiptItem, ReceiptPayment } from "../../print-s
 // ===== Configuração =====
 
 // Liberado na CSP (next.config.ts); o serviço escuta só em IPv4 loopback.
-const PRINT_SERVICE_URL = "http://127.0.0.1:5555";
+const PRINT_SERVICE_URL = "http://127.0.0.1:15555";
 const HEALTH_CHECK_TIMEOUT = 1200;
 const HEALTH_CACHE_ONLINE_MS = 60_000;
 const HEALTH_CACHE_OFFLINE_MS = 15_000;

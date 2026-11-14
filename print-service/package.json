@@ -1,6 +1,6 @@
 {
   "name": "donnaticy-print-service",
-  "version": "1.0.0",
+  "version": "1.1.1",
   "description": "Serviço local de impressão térmica (Bematech MP-4200 TH) para o ERP Donna Ticy",
   "main": "server.js",
   "scripts": {

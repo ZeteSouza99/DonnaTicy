@@ -7,7 +7,7 @@ const { printRaw } = require('./win-print')
 
 // config.json (criado pelo install.bat) ou variáveis de ambiente, que têm prioridade.
 function loadConfig() {
-  const configPath = path.join(__dirname, 'config.json')
+  const configPath = process.env.DONNATICY_PRINT_CONFIG || path.join(__dirname, 'config.json')
   let file = {}
   if (fs.existsSync(configPath)) {
     // O PowerShell 5.1 grava UTF-8 com BOM, que o JSON.parse rejeita.
@@ -18,6 +18,7 @@ function loadConfig() {
     : [].concat(file.allowedOrigins || [])
   const allowedOrigins = origins.map((o) => String(o).trim().replace(/\/+$/, '')).filter(Boolean)
   return {
+    installationId: file.installationId || null,
     printerName: process.env.PRINTER_NAME || file.printerName || 'MP-4200 TH',
     allowedOrigins: allowedOrigins.length > 0 ? allowedOrigins : ['http://localhost:3000'],
   }
@@ -48,7 +49,8 @@ app.use((req, res, next) => {
 app.use(express.json())
 
 app.get('/status', (_req, res) => {
-  res.json({ status: 'online', printer: PRINTER_NAME })
+  res.json({ status: 'online', printer: PRINTER_NAME, service: 'donnaticy-print',
+    version: require('./package.json').version, installationId: config.installationId })
 })
 
 app.post('/print', async (req, res) => {
@@ -79,9 +81,9 @@ app.post('/print', async (req, res) => {
   }
 })
 
-const PORT = process.env.PORT || 5555
+const PORT = process.env.PORT || 15555
 
-app.listen(PORT, '127.0.0.1', () => {
+if (require.main === module) app.listen(PORT, '127.0.0.1', () => {
   console.log(`\n  Donna Ticy Print Service`)
   console.log(`  ------------------------`)
   console.log(`  URL:        http://127.0.0.1:${PORT}`)
@@ -89,3 +91,5 @@ app.listen(PORT, '127.0.0.1', () => {
   console.log(`  Origens:    ${ALLOWED_ORIGINS.join(', ')}`)
   console.log(`  Status:     http://127.0.0.1:${PORT}/status\n`)
 })
+
+module.exports = { app, loadConfig }
