@@ -77,16 +77,19 @@ export default function LoginPage(): React.JSX.Element {
           <div className="space-y-4">
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-                E-mail
+                Usuário ou e-mail
               </label>
               <input
                 id="email"
-                type="email"
+                type="text"
+                autoComplete="username"
+                autoCapitalize="none"
+                spellCheck={false}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
                 className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm text-gray-900 outline-none transition-colors placeholder:text-gray-400 focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
-                placeholder="seu@email.com"
+                placeholder="Seu usuário ou e-mail"
               />
             </div>
 
@@ -97,6 +100,7 @@ export default function LoginPage(): React.JSX.Element {
               <input
                 id="password"
                 type="password"
+                autoComplete="current-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required

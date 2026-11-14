@@ -47,12 +47,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const body = await request.json();
     const { email, password, code } = loginSchema.parse(body);
 
-    const byEmail = await checkRateLimit(`login-email:${email}`, LOGIN_WINDOW_MS, LOGIN_MAX_PER_EMAIL);
-    if (!byEmail.allowed) return rateLimited(byEmail.retryAfterMs);
-
     const user = await prisma.user.findUnique({
-      where: { email, deletedAt: null },
+      where: email.includes("@") ? { email, deletedAt: null } : { username: email, deletedAt: null },
     });
+
+    // E-mail e usuário da mesma conta compartilham o limite de tentativas.
+    const byEmail = await checkRateLimit(`login-email:${user?.email ?? email}`, LOGIN_WINDOW_MS, LOGIN_MAX_PER_EMAIL);
+    if (!byEmail.allowed) return rateLimited(byEmail.retryAfterMs);
 
     if (!user || !user.isActive) {
       await burnPasswordCheck(password);

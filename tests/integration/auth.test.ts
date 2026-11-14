@@ -11,6 +11,7 @@ import { POST as changePassword } from "@/app/api/auth/change-password/route";
 import { POST as mfa } from "@/app/api/auth/mfa/route";
 import { GET as listOrders } from "@/app/api/orders/route";
 import { purgeRevokedTokens } from "@/services/maintenance-service";
+import { setUserLogin } from "@/services/user-login-service";
 import { request, resetDatabase } from "./fixtures";
 
 const PASSWORD = "Senha-Forte-123";
@@ -53,6 +54,62 @@ function currentCode(secret: string): string {
 }
 
 describe("login", () => {
+  it("troca o acesso por usuário, preserva a conta e revoga as sessões antigas", async () => {
+    const user = await createUser();
+    const oldToken = tokenFrom(await attempt({ email: EMAIL, password: PASSWORD }));
+    const newPassword = "Teste42";
+    await setUserLogin({ userId: user.id, username: "  Ticiane  ", password: newPassword });
+    const updated = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
+    expect(updated).toMatchObject({ username: "ticiane", email: EMAIL, role: user.role, name: user.name });
+    expect(updated.passwordHash).not.toBe(newPassword);
+    expect(updated.tokenVersion).toBe(user.tokenVersion + 1);
+    expect((await me(request("GET", "/api/auth/me", oldToken))).status).toBe(401);
+    expect((await attempt({ email: EMAIL, password: PASSWORD })).status).toBe(401);
+    const response = await attempt({ email: "  TICIANE  ", password: newPassword });
+    expect(response.status).toBe(200);
+    expect((await response.json()).user.id).toBe(user.id);
+    expect((await attempt({ email: EMAIL, password: newPassword })).status).toBe(200);
+    const audit = await prisma.auditLog.findFirstOrThrow({ where: { action: "UPDATE_LOGIN", entityId: user.id } });
+    expect(JSON.stringify(audit.payload)).not.toContain(newPassword);
+  });
+
+  it("recusa usuário duplicado sem trocar a senha da outra conta", async () => {
+    const user = await createUser();
+    await setUserLogin({ userId: user.id, username: "Ticiane", password: PASSWORD });
+    const other = await prisma.user.create({ data: {
+      email: "outra@example.test", name: "Outra", role: "VIEWER", passwordHash: user.passwordHash,
+    } });
+    await expect(setUserLogin({ userId: other.id, username: "TICIANE", password: "Outra123" })).rejects.toMatchObject({ code: "P2002" });
+    expect(await prisma.user.findUniqueOrThrow({ where: { id: other.id } })).toMatchObject({
+      username: null, passwordHash: user.passwordHash, tokenVersion: other.tokenVersion,
+    });
+  });
+
+  it("compartilha bloqueio e limite de tentativas entre usuário e e-mail", async () => {
+    const user = await createUser();
+    await prisma.user.update({ where: { id: user.id }, data: { username: "ticiane" } });
+    for (let i = 0; i < 5; i++) {
+      expect((await attempt({ email: i % 2 ? EMAIL : "Ticiane", password: "Errada123" })).status).toBe(401);
+    }
+    expect((await attempt({ email: "Ticiane", password: PASSWORD })).status).toBe(423);
+    expect((await attempt({ email: EMAIL, password: PASSWORD })).status).toBe(423);
+    const counter = await prisma.rateLimit.findUniqueOrThrow({ where: { key: `login-email:${EMAIL}` } });
+    expect(counter.count).toBe(7);
+    expect((await attempt({ email: "inexistente", password: PASSWORD })).status).toBe(401);
+  });
+
+  it("preserva a exigência de 2FA e não altera contas inativas", async () => {
+    const user = await createUser();
+    const setupResponse = await mfa(request("POST", "/api/auth/mfa", tokenFrom(await attempt({ email: EMAIL, password: PASSWORD })), { action: "setup" }));
+    const { secret } = await setupResponse.json();
+    await prisma.user.update({ where: { id: user.id }, data: { mfaEnabled: true } });
+    await setUserLogin({ userId: user.id, username: "Ticiane", password: PASSWORD });
+    expect(await errorCode(await attempt({ email: "ticiane", password: PASSWORD }))).toBe("MFA_REQUIRED");
+    expect((await attempt({ email: "ticiane", password: PASSWORD, code: currentCode(secret) })).status).toBe(200);
+    await prisma.user.update({ where: { id: user.id }, data: { isActive: false } });
+    await expect(setUserLogin({ userId: user.id, username: "outro", password: PASSWORD })).rejects.toMatchObject({ code: "P2025" });
+  });
+
   it("ignora maiúsculas e espaços no e-mail e usa a validade de JWT_EXPIRES_IN no cookie", async () => {
     await createUser();
     const response = await attempt({ email: "  ANA@Example.TEST ", password: PASSWORD });

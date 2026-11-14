@@ -7,6 +7,9 @@ import { z } from "@/lib/zod";
 // Mesma forma em cadastro e login: o e-mail é único sem diferenciar maiúsculas.
 const emailSchema = z.string().trim().toLowerCase().pipe(z.email("E-mail inválido."));
 
+export const usernameSchema = z.string().trim().toLowerCase()
+  .regex(/^[a-z0-9][a-z0-9._-]{2,39}$/, "Use de 3 a 40 letras, números, pontos, hífens ou sublinhados no usuário.");
+
 const mfaCodeSchema = z.string().trim().regex(/^\d{6}$/, "O código tem 6 dígitos.");
 
 export const strongPasswordSchema = z.string()
@@ -16,7 +19,8 @@ export const strongPasswordSchema = z.string()
   .regex(/[0-9]/, "Senha deve conter pelo menos um número.");
 
 export const loginSchema = z.object({
-  email: emailSchema,
+  // O nome do campo é mantido para compatibilidade com os clientes existentes.
+  email: z.union([emailSchema, usernameSchema]),
   password: z.string().min(6, "Senha deve ter no mínimo 6 caracteres."),
   code: mfaCodeSchema.optional(),
 });
