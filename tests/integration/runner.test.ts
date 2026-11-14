@@ -14,7 +14,7 @@ describe("runner de integração", () => {
   it("preserva a falha do Vitest após encerrar o PostgreSQL descartável", async ({ onTestFinished, signal }) => {
     const root = fileURLToPath(new URL("../../", import.meta.url));
     const child = spawn(process.execPath, [
-      resolve(root, "node_modules/tsx/dist/cli.mjs"),
+      "--require", resolve(root, "scripts/windows-test-compat.cjs"),
       resolve(root, "scripts/test-integration.ts"),
       // O parser rejeita a opção antes de descobrir testes, impedindo recursão.
       "--donnaticy-intentional-invalid-option",

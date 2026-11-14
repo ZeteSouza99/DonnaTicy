@@ -7,6 +7,7 @@ import { parseEnumParam } from "@/lib/query-params";
 import { getPaginationParams, paginate } from "@/lib/pagination";
 import { createOrderSchema } from "@/schemas/sales";
 import { getClientIp } from "@/lib/audit";
+import { runIdempotent } from "@/services/idempotency-service";
 import { createOrder } from "@/services/order-service";
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
@@ -70,7 +71,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const body = await request.json();
     const input = createOrderSchema.parse(body);
 
-    const order = await prisma.$transaction((tx) =>
+    const order = await runIdempotent(session.sub, "orders", request.headers.get("Idempotency-Key"), input, (tx) =>
       createOrder(tx, { input, session, ipAddress: getClientIp(request) }),
     );
 

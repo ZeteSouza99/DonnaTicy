@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { clientFetch } from "@/lib/client-fetch";
+import { useState } from "react";
+import { useApiQuery } from "@/hooks/use-api-query";
+import { ErrorMessage } from "@/components/ui/feedback";
 import { ReportShell, KpiBox } from "@/components/reports/report-shell";
 import { formatBRL, formatNumber, formatPct, formatDateOnly } from "@/lib/format";
 import { toLocalDateInputValue } from "@/lib/date";
@@ -27,6 +28,8 @@ interface Resp {
     revenue: number;
     netRevenue: number;
     cogs: number;
+    automaticCogs: number;
+    creditRefunds: number;
     taxes: number;
     fees: number;
     expenses: number;
@@ -59,17 +62,9 @@ export default function FinancialReportPage(): React.ReactNode {
   const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
   const [from, setFrom] = useState(isoDate(monthStart));
   const [to, setTo] = useState(isoDate(today));
-  const [data, setData] = useState<Resp | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  const load = (): void => {
-    setLoading(true);
-    clientFetch<Resp>(`/api/reports/financial?from=${from}&to=${to}`)
-      .then(setData)
-      .finally(() => setLoading(false));
-  };
-
-  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+  const [queryUrl, setQueryUrl] = useState(`/api/reports/financial?from=${from}&to=${to}`);
+  const { data, loading, error, refresh } = useApiQuery<Resp>(queryUrl);
+  const load = () => { setQueryUrl(`/api/reports/financial?from=${from}&to=${to}`); refresh(); };
 
   return (
     <ReportShell
@@ -86,6 +81,8 @@ export default function FinancialReportPage(): React.ReactNode {
         </div>
       }
     >
+      {data && <p className="rounded-xl bg-brand-50 p-4 text-xs text-brand-900">O resultado inclui {formatBRL(data.summary.automaticCogs)} de CMV calculado pelos itens e {formatBRL(data.summary.creditRefunds)} em vales de devolução. Os agrupamentos e o CSV abaixo mostram os lançamentos financeiros registrados.</p>}
+      {error && <ErrorMessage message={error} onRetry={refresh}/>}
       {loading || !data ? (
         <div className="flex items-center justify-center py-12"><Loader2 className="animate-spin" /></div>
       ) : (

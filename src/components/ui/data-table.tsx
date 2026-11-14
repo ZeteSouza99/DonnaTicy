@@ -17,9 +17,9 @@ interface DataTableProps<T> {
 
 export function DataTable<T>({ columns, data, keyExtractor, onRowClick }: DataTableProps<T>): ReactNode {
   return (
-    <div className="overflow-x-auto rounded-lg border border-gray-200">
-      <table className="min-w-full divide-y divide-gray-200">
-        <thead className="bg-gray-50">
+    <div className="overflow-x-auto rounded-xl border border-gray-200 max-sm:border-0">
+      <table className="responsive-table min-w-full divide-y divide-gray-200">
+        <thead className="sticky top-0 bg-gray-50">
           <tr>
             {columns.map((col) => (
               <th
@@ -36,10 +36,12 @@ export function DataTable<T>({ columns, data, keyExtractor, onRowClick }: DataTa
             <tr
               key={keyExtractor(item)}
               className={onRowClick ? "cursor-pointer hover:bg-gray-50 transition-colors" : ""}
+              tabIndex={onRowClick ? 0 : undefined}
+              onKeyDown={(e) => { if (onRowClick && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onRowClick(item); } }}
               onClick={() => onRowClick?.(item)}
             >
               {columns.map((col) => (
-                <td key={col.key} className="whitespace-nowrap px-4 py-3 text-sm text-gray-700">
+                <td key={col.key} data-label={typeof col.label === "string" ? col.label : col.key} className="whitespace-nowrap px-4 py-3 text-sm text-gray-700">
                   {col.render
                     ? col.render(item)
                     : String((item as Record<string, unknown>)[col.key] ?? "")}

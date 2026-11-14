@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useRouter } from "next/navigation";
-import { Search, Truck, RotateCcw } from "lucide-react";
+import { Truck, RotateCcw } from "lucide-react";
 import { clientFetch } from "@/lib/client-fetch";
 import { DataTable } from "@/components/ui/data-table";
 import { Pagination } from "@/components/ui/pagination";
@@ -43,7 +42,6 @@ const RETURN_STATUS: Record<string, string> = {
 };
 
 export default function LogisticaPage(): React.ReactNode {
-  const router = useRouter();
   const [tab, setTab] = useState<"shipments" | "returns">("shipments");
   const [shipments, setShipments] = useState<PaginatedResponse<Shipment> | null>(null);
   const [returns, setReturns] = useState<PaginatedResponse<ReturnRequest> | null>(null);

@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState, Fragment } from "react";
-import { clientFetch } from "@/lib/client-fetch";
+import { useState, Fragment } from "react";
+import { useApiQuery } from "@/hooks/use-api-query";
+import { ErrorMessage } from "@/components/ui/feedback";
 import { ReportShell, KpiBox } from "@/components/reports/report-shell";
 import { formatBRL, formatNumber, formatPct, formatDateTime } from "@/lib/format";
 import { toLocalDateInputValue } from "@/lib/date";
@@ -80,19 +81,11 @@ export default function SalesReportPage(): React.ReactNode {
   const ago = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
   const [from, setFrom] = useState(isoDate(ago));
   const [to, setTo] = useState(isoDate(today));
-  const [data, setData] = useState<Resp | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [queryUrl, setQueryUrl] = useState(`/api/reports/sales?from=${from}&to=${to}`);
+  const { data, loading, error, refresh } = useApiQuery<Resp>(queryUrl);
+  const load = () => { setQueryUrl(`/api/reports/sales?from=${from}&to=${to}`); refresh(); };
+
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-
-  const load = (): void => {
-    setLoading(true);
-    clientFetch<Resp>(`/api/reports/sales?from=${from}&to=${to}`)
-      .then(setData)
-      .finally(() => setLoading(false));
-  };
-
-  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
-
   const toggle = (id: string): void => {
     const next = new Set(expanded);
     if (next.has(id)) next.delete(id); else next.add(id);
@@ -133,6 +126,7 @@ export default function SalesReportPage(): React.ReactNode {
         </div>
       }
     >
+      {error && <ErrorMessage message={error} onRetry={refresh}/>}
       {loading || !data ? (
         <div className="flex items-center justify-center py-12"><Loader2 className="animate-spin" /></div>
       ) : (

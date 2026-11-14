@@ -6,7 +6,7 @@ import { prisma } from "@/lib/db";
 import { signToken } from "@/lib/auth";
 import { POST as createOrder } from "@/app/api/orders/route";
 import { PATCH as changeOrderStatus, GET as getOrder } from "@/app/api/orders/[id]/route";
-import { GET as health } from "@/app/api/health/route";
+import { GET as health } from "@/app/api/maintenance/route";
 import { PUT as updateEntry, DELETE as deleteEntry } from "@/app/api/financial/entries/[id]/route";
 import { POST as createEntry, GET as listEntries } from "@/app/api/financial/entries/route";
 import { POST as bulkDeleteEntries } from "@/app/api/financial/entries/bulk-delete/route";
@@ -25,6 +25,18 @@ beforeEach(async () => {
   fixture = await createFixture();
 });
 afterAll(() => prisma.$disconnect());
+
+it('retorna os dados gravados para o recibo do PDV e separa cupom e vale', async () => {
+  await prisma.coupon.create({ data: { code: 'RECIBO', discountType: 'FIXED', discountValue: 20, validFrom: new Date('2000-01-01'), validUntil: new Date('2100-01-01') } });
+  await prisma.storeCredit.create({ data: { code: 'VALE-RECIBO', customerId: fixture.customer.id, amount: 50, remainingAmount: 50 } });
+  const response = await createOrder(request('POST', '/api/orders', fixture.token, orderInput({ channel: 'STORE', couponCode: 'RECIBO', storeCreditCode: 'VALE-RECIBO', payments: [{ method: 'PIX', amount: 130 }] })));
+  const order = await response.json();
+  expect(response.status, JSON.stringify(order)).toBe(201);
+  expect(order).toMatchObject({ couponCode: 'RECIBO', couponDiscount: 20, usedStoreCredit: { code: 'VALE-RECIBO' } });
+  expect(Number(order.usedStoreCreditAmount)).toBe(50);
+  expect(order.seller.name).toBeTruthy();
+  expect(order.items[0].variant.product.name).toBeTruthy();
+});
 
 function orderInput(overrides: Record<string, unknown> = {}) {
   return {
@@ -314,6 +326,7 @@ describe("API → autenticação → pedido → estoque → financeiro", () => {
 
   it("bloqueia troca/devolução em cancelado e cancelamento com devolução existente", async () => {
     const order = await sell();
+    expect((await transition(order.id, "PICKING")).status).toBe(200);
     const item = await prisma.orderItem.findFirstOrThrow({ where: { orderId: order.id } });
     const returnBody = { orderId: order.id, customerId: fixture.customer.id, type: "RETURN", items: [{ orderItemId: item.id, variantId: item.variantId, quantity: 1, reason: "REGRET" }] };
     expect((await createReturn(request("POST", "/api/logistics/returns", fixture.token, returnBody))).status).toBe(201);
@@ -383,6 +396,7 @@ describe("devoluções vinculadas e idempotentes", () => {
     const foreignItem = await prisma.orderItem.findFirstOrThrow({ where: { orderId: cancelled.id } });
     await transition(cancelled.id);
     const active = await sell();
+    expect((await transition(active.id, "PICKING")).status).toBe(200);
     const ownItem = await prisma.orderItem.findFirstOrThrow({ where: { orderId: active.id } });
     const other = await secondVariant();
     const otherCustomer = await prisma.customer.create({ data: { code: "CLI-OTHER", fullName: "Outro cliente", phone: "11999999002" } });
@@ -399,7 +413,7 @@ describe("devoluções vinculadas e idempotentes", () => {
       expect((await createReturn(request("POST", "/api/logistics/returns", fixture.token, body))).status).toBe(400);
     }
     expect(await prisma.returnRequest.count()).toBe(0);
-    expect(await stock()).toMatchObject({ quantity: 10, reservedQty: 2 });
+    expect(await stock()).toMatchObject({ quantity: 8, reservedQty: 0 });
     expect(await prisma.financialEntry.count({ where: { type: "REFUND" } })).toBe(1);
 
     // Também barra registros inconsistentes que já existiam antes da validação.
@@ -544,7 +558,7 @@ describe("local, vendedor e pagamento pendente", () => {
   }
 
   function runCron() {
-    return health(new NextRequest("http://localhost/api/health"));
+    return health(new NextRequest("http://localhost/api/maintenance", { headers: { Authorization: `Bearer ${process.env.CRON_SECRET}` } }));
   }
 
   it("usa a loja do usuário quando o local não vem e recusa venda sem local", async () => {
@@ -696,7 +710,7 @@ describe("centavos em troca, devolução e cancelamento", () => {
     expect(await prisma.financialEntry.findFirstOrThrow({ where: { orderId: item.orderId, category: "EXCHANGE" } })).toMatchObject({ amount: 0.02 });
   });
 
-  it("devolução aceita reembolso até um centavo acima do valor dos itens e recusa dois", async () => {
+  it("devolução aceita o valor exato dos itens e recusa qualquer centavo excedente", async () => {
     await prisma.product.update({ where: { id: fixture.product.id }, data: { basePrice: 33.33 } });
     const order = await sell({ channel: "STORE", items: [{ variantId: fixture.variant.id, quantity: 3 }], payments: [{ method: "PIX", amount: 99.99 }] });
     const item = await prisma.orderItem.findFirstOrThrow({ where: { orderId: order.id } });
@@ -708,7 +722,8 @@ describe("centavos em troca, devolução e cancelamento", () => {
     const { id } = await created.json();
     // Dois itens de 33,33 valem 66,66.
     expect((await resolve(id, { refundAmount: 66.68 })).status).toBe(400);
-    expect((await resolve(id, { refundAmount: 33.33, storeCreditAmount: 33.34 })).status).toBe(200);
+    expect((await resolve(id, { refundAmount: 33.33, storeCreditAmount: 33.34 })).status).toBe(400);
+    expect((await resolve(id, { refundAmount: 33.33, storeCreditAmount: 33.33 })).status).toBe(200);
     expect(await prisma.financialEntry.findMany({ where: { orderId: order.id, type: "REFUND" } })).toMatchObject([{ amount: 33.33 }]);
   });
 

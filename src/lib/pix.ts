@@ -37,7 +37,6 @@ function toAscii(value: string): string {
   return value
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
-    // eslint-disable-next-line no-control-regex
     .replace(/[^\x20-\x7E]/g, "")
     .trim();
 }

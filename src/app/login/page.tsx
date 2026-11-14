@@ -4,6 +4,7 @@ import { useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
+import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { brand } from "@/lib/brand";
 
 export default function LoginPage(): React.JSX.Element {
@@ -47,6 +48,7 @@ export default function LoginPage(): React.JSX.Element {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gray-50 p-4">
+      <div className="fixed right-4 top-4 z-20 sm:right-6 sm:top-6"><ThemeToggle /></div>
       <div className="w-full max-w-md">
         {/* Logo */}
         <div className="mb-8 text-center">

@@ -169,6 +169,7 @@ export function actionForMethod(method: string): Action {
 }
 
 const API_PREFIX_TO_RESOURCE: ReadonlyArray<readonly [string, Resource]> = [
+  ["/api/settings", "settings"],
   ["/api/catalog", "catalog"],
   ["/api/inventory", "inventory"],
   ["/api/orders", "orders"],

@@ -4,9 +4,9 @@ import { join, relative } from "node:path";
 
 const API_DIR = join(process.cwd(), "src/app/api");
 // Sem sessão por definição.
-const PUBLIC_ROUTES = new Set(["auth/login", "auth/logout", "health"]);
+const PUBLIC_ROUTES = new Set(["auth/login", "auth/logout", "health", "maintenance"]);
 // Só exigem estar logado, qualquer papel.
-const AUTH_ONLY_ROUTES = new Set(["auth/me", "auth/change-password", "auth/mfa"]);
+const AUTH_ONLY_ROUTES = new Set(["auth/me", "auth/change-password", "auth/mfa", "search"]);
 
 function routeFiles(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
@@ -35,7 +35,7 @@ describe("guardas das rotas de API", () => {
 
       const guard = AUTH_ONLY_ROUTES.has(route)
         ? /await requireAuth\(request\)/
-        : /await requirePermission\(request, "\w+", "(read|write|manage)"\)/;
+        : /await requirePermission\(request,\s*"\w+",\s*"(read|write|manage)"\)/;
       for (const handler of handlers) {
         const name = handler.slice(0, handler.indexOf("("));
         expect(guard.test(handler), `${route} ${name}`).toBe(true);

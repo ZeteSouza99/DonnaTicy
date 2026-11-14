@@ -1,3 +1,5 @@
+import { runAutomations } from "./automation-service";
+import { advancePendingImports } from "./import-job-service";
 import { prisma } from "@/lib/db";
 import { serverEnv } from "@/lib/env";
 import { purgeExpiredRateLimits } from "@/lib/rate-limit";
@@ -66,9 +68,11 @@ async function attempt(task: string, run: () => Promise<number>): Promise<number
   }
 }
 
-/** Rotinas diárias do cron (/api/health); cada uma falha isoladamente. */
+/** Rotinas diárias do cron (/api/maintenance); cada uma falha isoladamente. */
 export async function runMaintenance() {
   return {
+    automationsExecuted: await attempt("automations", () => runAutomations()),
+    importedBatches: await attempt("imports", advancePendingImports),
     purgedRateLimits: await attempt("rate-limits", purgeExpiredRateLimits),
     purgedRevokedTokens: await attempt("revoked-tokens", () => purgeRevokedTokens()),
     expiredStoreCredits: await attempt("store-credits", () => expireStoreCredits()),

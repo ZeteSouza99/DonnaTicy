@@ -340,7 +340,7 @@ export default function CatalogPage(): React.ReactNode {
       {products && products.data.length > 0 && (
         <div className={isLoading ? "opacity-50 transition-opacity" : "transition-opacity"}>
           <div className="overflow-x-auto rounded-lg border border-gray-200">
-            <table className="min-w-full divide-y divide-gray-200">
+            <table className="catalog-table responsive-table min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
                   <th className="w-10 px-4 py-3">
@@ -376,7 +376,7 @@ export default function CatalogPage(): React.ReactNode {
                   return (
                     <tr key={p.id} className={`${editing ? "bg-brand-50/30" : selected ? "bg-brand-50/50" : "hover:bg-gray-50"} transition-colors`}>
                       {/* Seleção */}
-                      <td className="w-10 px-4 py-3">
+                      <td data-label="Selecionar" className="w-10 px-4 py-3">
                         <input
                           type="checkbox"
                           checked={selected}
@@ -388,7 +388,7 @@ export default function CatalogPage(): React.ReactNode {
                       </td>
 
                       {/* Código */}
-                      <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-700">
+                      <td data-label="Código" className="whitespace-nowrap px-4 py-3 text-sm text-gray-700">
                         {editing ? (
                           <input value={v.code} onChange={(e) => updateField(p.id, "code", e.target.value)}
                             disabled={saving} className={INPUT_CELL} />
@@ -396,7 +396,7 @@ export default function CatalogPage(): React.ReactNode {
                       </td>
 
                       {/* Nome */}
-                      <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-700">
+                      <td data-label="Nome" className="whitespace-nowrap px-4 py-3 text-sm text-gray-700">
                         {editing ? (
                           <input value={v.name} onChange={(e) => updateField(p.id, "name", e.target.value)}
                             disabled={saving} className={INPUT_CELL} />
@@ -404,7 +404,7 @@ export default function CatalogPage(): React.ReactNode {
                       </td>
 
                       {/* Categoria */}
-                      <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-700">
+                      <td data-label="Categoria" className="whitespace-nowrap px-4 py-3 text-sm text-gray-700">
                         {editing ? (
                           <select value={v.categoryId} onChange={(e) => updateField(p.id, "categoryId", e.target.value)}
                             disabled={saving} className={INPUT_CELL}>
@@ -417,7 +417,7 @@ export default function CatalogPage(): React.ReactNode {
                       </td>
 
                       {/* Coleção */}
-                      <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-700">
+                      <td data-label="Coleção" className="whitespace-nowrap px-4 py-3 text-sm text-gray-700">
                         {editing ? (
                           <select value={v.collectionId} onChange={(e) => updateField(p.id, "collectionId", e.target.value)}
                             disabled={saving} className={INPUT_CELL}>
@@ -430,7 +430,7 @@ export default function CatalogPage(): React.ReactNode {
                       </td>
 
                       {/* Preço */}
-                      <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-700">
+                      <td data-label="Preço" className="whitespace-nowrap px-4 py-3 text-sm text-gray-700">
                         {editing ? (
                           <MoneyInput value={v.basePrice}
                             onChange={(val) => updateField(p.id, "basePrice", val)}
@@ -439,7 +439,7 @@ export default function CatalogPage(): React.ReactNode {
                       </td>
 
                       {/* Custo */}
-                      <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-700">
+                      <td data-label="Custo" className="whitespace-nowrap px-4 py-3 text-sm text-gray-700">
                         {editing ? (
                           <MoneyInput value={v.costPrice}
                             onChange={(val) => updateField(p.id, "costPrice", val)}
@@ -448,7 +448,7 @@ export default function CatalogPage(): React.ReactNode {
                       </td>
 
                       {/* Curva ABC */}
-                      <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-700">
+                      <td data-label="Curva" className="whitespace-nowrap px-4 py-3 text-sm text-gray-700">
                         {editing ? (
                           <select value={v.abcClass} onChange={(e) => updateField(p.id, "abcClass", e.target.value)}
                             disabled={saving} className={`${INPUT_CELL} w-20`}>
@@ -461,7 +461,7 @@ export default function CatalogPage(): React.ReactNode {
                       </td>
 
                       {/* Ações */}
-                      <td className="whitespace-nowrap px-4 py-3 text-sm">
+                      <td data-label="Ações" className="whitespace-nowrap px-4 py-3 text-sm">
                         {editing ? (
                           <div className="flex items-center gap-1">
                             <button onClick={() => saveRow(p.id)} disabled={saving}

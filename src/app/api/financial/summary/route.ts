@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
+import { financialTotals } from "@/services/reporting-service";
 import { requirePermission } from "@/lib/auth";
-import { handleApiError } from "@/lib/errors";
-import { startOfDayUtc, endOfDayUtc, startOfMonthInZone } from "@/lib/date";
+import { handleApiError, ValidationError } from "@/lib/errors";
+import { startOfDayInZone, endOfDayInZone, startOfMonthInZone } from "@/lib/date";
 import { serverEnv } from "@/lib/env";
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
@@ -14,38 +14,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const locationId = searchParams.get("locationId") ?? undefined;
 
     const now = new Date();
-    const startDate = from ? startOfDayUtc(from) : startOfMonthInZone(now, serverEnv().APP_TIMEZONE);
-    const endDate = to ? endOfDayUtc(to) : now;
+    const startDate = from ? startOfDayInZone(from, serverEnv().APP_TIMEZONE) : startOfMonthInZone(now, serverEnv().APP_TIMEZONE);
+    const endDate = to ? endOfDayInZone(to, serverEnv().APP_TIMEZONE) : now;
 
-    const dateFilter = { competenceDate: { gte: startDate, lte: endDate } };
-
-    const grouped = await prisma.financialEntry.groupBy({
-      by: ["type"],
-      where: {
-        deletedAt: null,
-        status: { not: "CANCELLED" },
-        ...dateFilter,
-        ...(locationId && {
-          order: { locationId },
-        }),
-      },
-      _sum: { amount: true },
-    });
-
-    const sumByType = (type: string): number =>
-      Number(grouped.find((g) => g.type === type)?._sum.amount ?? 0);
-
-    const revenue = sumByType("REVENUE");
-    const cogs = Math.abs(sumByType("COGS"));
-    const taxes = Math.abs(sumByType("TAX"));
-    const fees = Math.abs(sumByType("FEE"));
-    const expenses = Math.abs(sumByType("EXPENSE"));
-    const refunds = Math.abs(sumByType("REFUND"));
-
-    const netRevenue = revenue - taxes - refunds;
-    const grossProfit = netRevenue - cogs;
-    const contributionMargin = grossProfit - fees;
-    const operatingProfit = contributionMargin - expenses;
+    if (!Number.isFinite(startDate.getTime()) || !Number.isFinite(endDate.getTime()) || startDate > endDate) throw new ValidationError("Informe um período válido.");
+    const { revenue, cogs, taxes, fees, expenses, refunds, netRevenue, grossProfit, contributionMargin, operatingProfit } = await financialTotals(startDate, endDate, locationId);
 
     return NextResponse.json({
       period: { from: startDate, to: endDate },

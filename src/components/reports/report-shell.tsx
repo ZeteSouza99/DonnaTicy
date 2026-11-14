@@ -24,7 +24,7 @@ export function ReportShell({
   toolbar,
 }: ReportShellProps): React.ReactNode {
   return (
-    <div className="space-y-6">
+    <div className="report-page space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <Link href="/dashboard/relatorios" className="rounded-lg p-2 hover:bg-gray-100 print:hidden" aria-label="Voltar">
@@ -35,7 +35,7 @@ export function ReportShell({
             {description && <p className="text-sm text-gray-500">{description}</p>}
           </div>
         </div>
-        <div className="flex items-center gap-2 print:hidden">
+        <div className="flex flex-wrap items-center gap-2 print:hidden">
           {toolbar}
           <button
             type="button"

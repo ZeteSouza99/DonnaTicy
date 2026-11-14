@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { lowStockCount, lowStockWhere, stockJoins } from "@/services/stock-query-service";
 import { prisma } from "@/lib/db";
 import { requirePermission } from "@/lib/auth";
 import { handleApiError } from "@/lib/errors";
@@ -13,7 +14,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const variantId = searchParams.get("variantId") ?? undefined;
     const belowMin = searchParams.get("belowMin") === "true";
 
+    const search = searchParams.get("search")?.trim();
     const baseWhere = {
+      location: { isActive: true, deletedAt: null },
+      ...(search && { OR: [{ variant: { sku: { contains: search, mode: "insensitive" as const } } }, { variant: { product: { name: { contains: search, mode: "insensitive" as const } } } }] }),
       variant: { deletedAt: null, product: { deletedAt: null } },
       ...(locationId && { locationId }),
       ...(variantId && { variantId }),
@@ -32,18 +36,13 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       location: { select: { id: true, name: true, code: true, type: true } },
     };
 
-    // Prisma doesn't support column-to-column comparison in where clause
-    // For belowMin, fetch all and filter in memory with correct pagination
     if (belowMin) {
-      const allPositions = await prisma.stockPosition.findMany({
-        where: baseWhere,
-        include: includeRelations,
-        orderBy: { updatedAt: "desc" },
-      });
-
-      const filtered = allPositions.filter((sp) => sp.quantity <= sp.minStock);
-      const paginatedData = filtered.slice(skip, skip + limit);
-      return NextResponse.json(paginate(paginatedData, filtered.length, page, limit));
+      const [ids, total] = await Promise.all([
+        prisma.$queryRaw<Array<{ id: string }>>`SELECT sp.id ${stockJoins} WHERE ${lowStockWhere(locationId, variantId, search)} ORDER BY sp.updated_at DESC, sp.id ASC LIMIT ${limit} OFFSET ${skip}`,
+        lowStockCount(locationId, variantId, search),
+      ]);
+      const data = await prisma.stockPosition.findMany({ where: { id: { in: ids.map((i) => i.id) } }, include: includeRelations, orderBy: [{ updatedAt: "desc" }, { id: "asc" }] });
+      return NextResponse.json(paginate(data.map((s) => ({ ...s, available: s.quantity - s.reservedQty })), total, page, limit));
     }
 
     const [data, total] = await Promise.all([
@@ -57,7 +56,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       prisma.stockPosition.count({ where: baseWhere }),
     ]);
 
-    return NextResponse.json(paginate(data, total, page, limit));
+    return NextResponse.json(paginate(data.map((s) => ({ ...s, available: s.quantity - s.reservedQty })), total, page, limit));
   } catch (error) {
     return handleApiError(error);
   }

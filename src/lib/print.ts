@@ -10,41 +10,8 @@
 
 import { brand } from "./brand";
 
-// ===== Tipos =====
-
-export interface ReceiptItem {
-  name: string;
-  quantity: number;
-  unitPrice: number;
-  totalPrice: number;
-}
-
-export interface ReceiptPayment {
-  label: string;
-  amount: number;
-  installments?: number;
-}
-
-export interface SaleReceiptData {
-  code: string;
-  createdAt: string;
-  sellerName?: string;
-  customerName?: string;
-  items: ReceiptItem[];
-  subtotal: number;
-  discountTotal: number;
-  total: number;
-  payments: ReceiptPayment[];
-  change?: number;
-}
-
-interface StoreInfo {
-  storeName: string;
-  storeCnpj?: string;
-  storeAddress?: string;
-  storePhone?: string;
-  receiptFooter?: string;
-}
+import { renderReceiptHtml, type SaleReceiptData, type StoreInfo } from "../../print-service/receipt-layout";
+export type { SaleReceiptData, ReceiptItem, ReceiptPayment } from "../../print-service/receipt-layout";
 
 // ===== Configuração =====
 
@@ -56,7 +23,11 @@ const HEALTH_CACHE_OFFLINE_MS = 15_000;
 
 function storeInfo(): StoreInfo {
   return {
-    storeName: brand.name,
+    storeName: brand.name === "DonnaTicy" ? "Donna Ticy" : brand.name,
+    storeTagline: process.env.NEXT_PUBLIC_RECEIPT_TAGLINE ?? "MODA FITNESS",
+    exchangePolicy: process.env.NEXT_PUBLIC_RECEIPT_EXCHANGE_POLICY,
+    instagram: process.env.NEXT_PUBLIC_STORE_INSTAGRAM ?? "@donnaticy",
+    timeZone: process.env.NEXT_PUBLIC_RECEIPT_TIMEZONE || "America/Manaus",
     storeCnpj: process.env.NEXT_PUBLIC_STORE_CNPJ || undefined,
     storeAddress: process.env.NEXT_PUBLIC_STORE_ADDRESS || undefined,
     storePhone: process.env.NEXT_PUBLIC_STORE_PHONE || undefined,
@@ -105,26 +76,6 @@ async function printViaService(data: SaleReceiptData, store: StoreInfo): Promise
 
 // ===== Fallback HTML (80mm via window.print) =====
 
-function escapeHtml(text: string): string {
-  const div = document.createElement("div");
-  div.textContent = text;
-  return div.innerHTML;
-}
-
-function formatBRL(v: number): string {
-  return Number(v ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-}
-
-function formatDateTime(dateStr: string): string {
-  return new Date(dateStr).toLocaleString("pt-BR", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
 function printHtml(html: string): void {
   let printRoot = document.getElementById("print-root");
   if (!printRoot) {
@@ -138,81 +89,14 @@ function printHtml(html: string): void {
   printRoot.style.display = "block";
 
   setTimeout(() => {
+    document.body.classList.add("printing-receipt");
     window.print();
     setTimeout(() => {
+      document.body.classList.remove("printing-receipt");
       printRoot.style.display = "none";
       printRoot.innerHTML = "";
     }, 500);
   }, 200);
-}
-
-function printSaleReceiptHtml(sale: SaleReceiptData, store: StoreInfo): void {
-  const headerLines = [
-    store.storeCnpj ? `CNPJ: ${store.storeCnpj}` : "",
-    store.storeAddress || "",
-    store.storePhone ? `Tel: ${store.storePhone}` : "",
-  ].filter(Boolean);
-
-  const itemsHtml = sale.items
-    .map(
-      (item) => `
-    <div style="font-size:11px;margin-bottom:2px">
-      <div>${escapeHtml(item.name)}</div>
-      <div class="item-row">
-        <span class="item-qty">${item.quantity}x ${formatBRL(item.unitPrice)}</span>
-        <span class="item-price">${formatBRL(item.totalPrice)}</span>
-      </div>
-    </div>
-  `,
-    )
-    .join("");
-
-  const paymentsHtml = sale.payments
-    .map(
-      (p) => `
-    <div class="info-line">
-      <span>${escapeHtml(p.installments && p.installments > 1 ? `${p.label} ${p.installments}x` : p.label)}</span>
-      <span>${formatBRL(p.amount)}</span>
-    </div>
-  `,
-    )
-    .join("");
-
-  const footerHtml = store.receiptFooter
-    ? `<div class="footer" style="margin-top:4px">${store.receiptFooter
-        .split("\n")
-        .map((l) => l.trim())
-        .filter(Boolean)
-        .map(escapeHtml)
-        .join("<br/>")}</div>`
-    : "";
-
-  const html = `
-    <div class="print-receipt">
-      <div class="store-name">${escapeHtml(store.storeName)}</div>
-      ${headerLines.map((line) => `<div class="store-info">${escapeHtml(line)}</div>`).join("")}
-      <hr class="divider" />
-      <div style="text-align:center;font-weight:bold">COMPROVANTE DE VENDA<br/>SEM VALOR FISCAL</div>
-      <hr class="divider" />
-      <div class="info-line"><span>Venda ${escapeHtml(sale.code)}</span><span>${formatDateTime(sale.createdAt)}</span></div>
-      ${sale.sellerName ? `<div class="info-line"><span>Vendedor:</span><span>${escapeHtml(sale.sellerName)}</span></div>` : ""}
-      ${sale.customerName ? `<div class="info-line"><span>Cliente:</span><span>${escapeHtml(sale.customerName)}</span></div>` : ""}
-      <hr class="divider" />
-      ${itemsHtml}
-      <hr class="divider" />
-      <div class="info-line"><span>Subtotal</span><span>${formatBRL(sale.subtotal)}</span></div>
-      ${sale.discountTotal > 0 ? `<div class="info-line"><span>Desconto</span><span>-${formatBRL(sale.discountTotal)}</span></div>` : ""}
-      <div class="info-line" style="font-weight:bold;font-size:14px"><span>TOTAL</span><span>${formatBRL(sale.total)}</span></div>
-      <hr class="divider" />
-      ${paymentsHtml}
-      ${sale.change && sale.change > 0 ? `<div class="info-line" style="font-weight:bold"><span>Troco</span><span>${formatBRL(sale.change)}</span></div>` : ""}
-      <hr class="divider" />
-      <div class="footer">Obrigado pela preferencia!</div>
-      ${footerHtml}
-    </div>
-  `;
-
-  printHtml(html);
 }
 
 // ===== API pública =====
@@ -223,7 +107,7 @@ export async function printSaleReceipt(sale: SaleReceiptData): Promise<void> {
   try {
     const printed = await printViaService(sale, store);
     if (printed) return;
-    printSaleReceiptHtml(sale, store);
+    printHtml(renderReceiptHtml(sale, store));
   } catch {
     // Impressão nunca deve quebrar o fluxo de venda.
   }

@@ -1,6 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useDesktop } from "@/hooks/use-desktop";
+import { useDialogFocus } from "@/hooks/use-dialog-focus";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
@@ -11,6 +13,7 @@ import {
   Users,
   DollarSign,
   Factory,
+  Truck,
   Heart,
   BarChart3,
   Settings,
@@ -59,6 +62,7 @@ const navGroups: NavGroup[] = [
     items: [
       { label: "Estoque", href: "/dashboard/estoque", icon: Warehouse, resource: "inventory" },
       { label: "Compras", href: "/dashboard/compras", icon: Factory, resource: "purchasing" },
+      { label: "Logística", href: "/dashboard/logistica", icon: Truck, resource: "logistics" },
       { label: "Entradas", href: "/dashboard/notas-fiscais", icon: FileText, resource: "invoices" },
     ],
   },
@@ -74,7 +78,14 @@ const navGroups: NavGroup[] = [
 
 export function Sidebar({ role, isMobileOpen = false, onCloseMobile }: SidebarProps): React.JSX.Element {
   const pathname = usePathname();
+  const desktop = useDesktop();
+  useDialogFocus(isMobileOpen && !desktop ? "sidebar-navigation" : null, () => onCloseMobile?.());
   const [isCollapsed, setIsCollapsed] = useState(false);
+  // Preferência local só pode ser lida após a hidratação do servidor.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { try { setIsCollapsed(localStorage.getItem("donnaticy.sidebar") === "collapsed"); } catch {} }, []);
+  function toggleCollapsed() { setIsCollapsed((current) => { try { localStorage.setItem("donnaticy.sidebar", current ? "expanded" : "collapsed"); } catch {} return !current; }); }
+
 
   const visibleGroups = navGroups
     .map((g) => ({
@@ -100,15 +111,21 @@ export function Sidebar({ role, isMobileOpen = false, onCloseMobile }: SidebarPr
 
   return (
     <aside
-      className={`fixed inset-y-0 left-0 z-50 flex h-screen flex-col border-r border-gray-200/60 bg-white/95 backdrop-blur-xl transition-transform duration-300 ease-in-out md:sticky md:top-0 md:z-40 md:translate-x-0 md:bg-white/80 md:transition-[width] ${
+      id="sidebar-navigation"
+      inert={!desktop && !isMobileOpen}
+      role={!desktop && isMobileOpen ? "dialog" : undefined}
+      aria-modal={!desktop && isMobileOpen ? true : undefined}
+      aria-label="Menu principal"
+      tabIndex={-1}
+      className={`fixed inset-y-0 left-0 z-50 flex h-dvh flex-col border-r border-gray-200/60 bg-white/95 backdrop-blur-xl transition-transform duration-300 ease-in-out lg:sticky lg:top-0 lg:z-40 lg:translate-x-0 lg:bg-white/80 lg:transition-[width] ${
         isMobileOpen ? "translate-x-0" : "-translate-x-full"
-      } ${isCollapsed ? "md:w-[90px]" : "md:w-[260px]"} w-[280px] print:hidden`}
+      } ${isCollapsed ? "lg:w-[90px]" : "lg:w-[260px]"} w-[280px] print:hidden`}
     >
       {/* Botão fechar (mobile only) */}
       <button
         type="button"
         onClick={onCloseMobile}
-        className="absolute right-3 top-3 z-50 flex h-9 w-9 items-center justify-center rounded-full bg-gray-100 text-gray-500 transition hover:bg-gray-200 md:hidden"
+        className="absolute right-3 top-3 z-50 flex h-9 w-9 items-center justify-center rounded-full bg-gray-100 text-gray-500 transition hover:bg-gray-200 lg:hidden"
         aria-label="Fechar menu"
       >
         <X size={18} />
@@ -116,15 +133,15 @@ export function Sidebar({ role, isMobileOpen = false, onCloseMobile }: SidebarPr
 
       {/* Collapse Toggle (desktop only) */}
       <button
-        onClick={() => setIsCollapsed(!isCollapsed)}
-        className="absolute -right-3.5 top-8 z-50 hidden h-7 w-7 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-400 shadow-sm transition-colors hover:text-brand-600 focus:outline-none md:flex"
+        onClick={toggleCollapsed}
+        className="absolute -right-3.5 top-8 z-50 hidden h-7 w-7 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-400 shadow-sm transition-colors hover:text-brand-600 focus:outline-none lg:flex"
         aria-label={isCollapsed ? "Expandir menu" : "Esconder menu"}
       >
         {isCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
       </button>
 
       {/* Logo */}
-      <div className={`flex shrink-0 items-center justify-center px-4 transition-[height] duration-300 ease-in-out ${isCollapsed ? "h-24 pt-4" : "h-40 pt-6 pb-2"}`}>
+      <div className={`flex shrink-0 items-center justify-center px-4 transition-[height] duration-300 ease-in-out ${isCollapsed ? "h-20" : "h-24 py-3"}`}>
         <Link href="/dashboard" className={`flex w-full items-center justify-center transition-opacity hover:opacity-90 ${isCollapsed ? "" : "pr-6"}`}>
           {!isCollapsed ? (
             <Image 
@@ -132,7 +149,7 @@ export function Sidebar({ role, isMobileOpen = false, onCloseMobile }: SidebarPr
               alt={brand.name} 
               width={240} 
               height={128} 
-              className="h-32 w-auto object-contain transition-transform duration-300"
+              className="h-20 w-auto object-contain transition-transform duration-300"
               priority 
             />
           ) : (
@@ -153,7 +170,7 @@ export function Sidebar({ role, isMobileOpen = false, onCloseMobile }: SidebarPr
         <div className="space-y-1">
           <Link
             href="/dashboard"
-            className={`group relative flex items-center justify-center rounded-xl px-3 py-2.5 text-[14px] font-semibold transition-all duration-200 ${
+            className={`group relative flex items-center ${isCollapsed ? "justify-center" : "justify-start"} rounded-xl px-3 py-2.5 text-[14px] font-semibold transition-all duration-200 ${
               pathname === "/dashboard"
                 ? "bg-brand-50 text-brand-600 shadow-sm shadow-brand-100"
                 : "text-gray-500 hover:bg-gray-50 hover:text-gray-900"
@@ -185,7 +202,7 @@ export function Sidebar({ role, isMobileOpen = false, onCloseMobile }: SidebarPr
                     key={item.href}
                     href={item.href}
                     title={isCollapsed ? item.label : undefined}
-                    className={`group relative flex items-center justify-center rounded-xl px-3 py-2.5 text-[14px] font-semibold transition-all duration-200 ${
+                    className={`group relative flex items-center ${isCollapsed ? "justify-center" : "justify-start"} rounded-xl px-3 py-2.5 text-[14px] font-semibold transition-all duration-200 ${
                       isActive
                         ? "bg-brand-50 text-brand-600 shadow-sm shadow-brand-100"
                         : "text-gray-500 hover:bg-gray-50 hover:text-gray-900"
@@ -211,7 +228,7 @@ export function Sidebar({ role, isMobileOpen = false, onCloseMobile }: SidebarPr
           <Link
             href="/dashboard/configuracoes"
             title={isCollapsed ? "Configurações" : undefined}
-            className={`group flex items-center justify-center rounded-xl px-3 py-2.5 text-[14px] font-semibold transition-all duration-200 ${
+            className={`group flex items-center ${isCollapsed ? "justify-center" : "justify-start"} rounded-xl px-3 py-2.5 text-[14px] font-semibold transition-all duration-200 ${
               pathname.startsWith("/dashboard/configuracoes")
                 ? "bg-brand-50 text-brand-600 shadow-sm shadow-brand-100"
                 : "text-gray-500 hover:bg-gray-50 hover:text-gray-900"
@@ -226,7 +243,7 @@ export function Sidebar({ role, isMobileOpen = false, onCloseMobile }: SidebarPr
           <button
             type="button"
             title={isCollapsed ? "Sair" : undefined}
-            className="group flex w-full items-center justify-center rounded-xl px-3 py-2.5 font-semibold text-gray-500 transition-all duration-200 hover:bg-rose-50 hover:text-rose-600"
+            className="group flex w-full items-center justify-start rounded-xl px-3 py-2.5 font-semibold text-gray-500 transition-all duration-200 hover:bg-rose-50 hover:text-rose-600"
             onClick={() => {
               fetch("/api/auth/logout", { method: "POST" }).then(() => {
                 window.location.href = "/login";

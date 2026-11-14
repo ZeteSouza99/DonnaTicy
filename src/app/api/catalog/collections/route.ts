@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db";
 import { requirePermission } from "@/lib/auth";
 import { handleApiError } from "@/lib/errors";
 import { getPaginationParams, paginate } from "@/lib/pagination";
-import { createCollectionSchema, updateCollectionSchema } from "@/schemas/catalog";
+import { createCollectionSchema } from "@/schemas/catalog";
 import { createAuditLog, getClientIp } from "@/lib/audit";
 
 export async function GET(request: NextRequest): Promise<NextResponse> {

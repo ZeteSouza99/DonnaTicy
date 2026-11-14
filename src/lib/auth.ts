@@ -145,6 +145,7 @@ export async function loadSessionUser(session: JwtPayload) {
       where: { id: session.sub },
       select: {
         name: true,
+        location: { select: { name: true } },
         isActive: true,
         deletedAt: true,
         tokenVersion: true,

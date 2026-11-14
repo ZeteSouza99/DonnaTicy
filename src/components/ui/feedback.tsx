@@ -1,9 +1,11 @@
-import { Loader2 } from "lucide-react";
 
 export function LoadingSpinner(): React.JSX.Element {
   return (
-    <div className="flex h-64 items-center justify-center">
-      <Loader2 className="h-8 w-8 animate-spin text-brand-600" />
+    <div role="status" aria-label="Carregando conteúdo" className="w-full space-y-5 py-4">
+      <span className="sr-only">Carregando conteúdo…</span>
+      <div className="skeleton h-7 w-48" />
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">{[0,1,2,3].map((i) => <div key={i} className="skeleton h-28" />)}</div>
+      <div className="panel space-y-4">{[0,1,2,3].map((i) => <div key={i} className="skeleton h-10" />)}</div>
     </div>
   );
 }
@@ -15,9 +17,9 @@ interface EmptyStateProps {
 
 export function EmptyState({ title, description }: EmptyStateProps): React.JSX.Element {
   return (
-    <div className="flex h-64 flex-col items-center justify-center text-center">
+    <div className="flex min-h-48 flex-col items-center justify-center rounded-xl border border-dashed border-gray-200 p-6 text-center">
       <p className="text-lg font-medium text-gray-500">{title}</p>
-      {description && <p className="mt-1 text-sm text-gray-400">{description}</p>}
+      {description && <p className="mt-1 text-sm text-gray-500">{description}</p>}
     </div>
   );
 }
@@ -29,8 +31,8 @@ interface ErrorMessageProps {
 
 export function ErrorMessage({ message, onRetry }: ErrorMessageProps): React.JSX.Element {
   return (
-    <div className="flex h-64 flex-col items-center justify-center text-center">
-      <p className="text-lg font-medium text-red-500">Erro</p>
+    <div className="flex min-h-48 flex-col items-center justify-center rounded-xl border border-dashed border-gray-200 p-6 text-center">
+      <p role="alert" className="text-base font-semibold text-red-700">Não foi possível concluir</p>
       <p className="mt-1 text-sm text-gray-500">{message}</p>
       {onRetry && (
         <button

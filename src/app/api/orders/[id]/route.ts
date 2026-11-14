@@ -1,3 +1,4 @@
+import { getReturnBalances } from "@/services/return-balance-service";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requirePermission } from "@/lib/auth";
@@ -48,7 +49,8 @@ export async function GET(request: NextRequest, { params }: RouteParams): Promis
 
     if (!order) throw new NotFoundError("Pedido");
 
-    return NextResponse.json(order);
+    const balances = await getReturnBalances(prisma, id);
+    return NextResponse.json({ ...order, items: order.items.map(item => ({ ...item, returnableQty: balances.get(item.id)?.remaining ?? 0, returnedQty: balances.get(item.id)?.settled ?? 0, netReturnCents: balances.get(item.id)?.netCents ?? 0 })) });
   } catch (error) {
     return handleApiError(error);
   }

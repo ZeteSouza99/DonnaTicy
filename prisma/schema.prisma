@@ -322,6 +322,7 @@ enum AutomationActionType {
 }
 
 enum NotificationChannel {
+  INTERNAL
   WHATSAPP
   EMAIL
   SMS
@@ -331,6 +332,7 @@ enum NotificationChannel {
 }
 
 enum AutomationExecutionStatus {
+  COMPLETED
   SENT
   DELIVERED
   OPENED
@@ -1124,6 +1126,7 @@ model Customer {
   orders               Order[]
   returnRequests       ReturnRequest[]
   loyaltyTransactions  LoyaltyTransaction[]
+  crmTasks CrmTask[]
   automationExecutions AutomationExecution[]
   carts                Cart[]
   storeCredits         StoreCredit[]
@@ -1285,6 +1288,8 @@ model Coupon {
 }
 
 model StoreCredit {
+  returnRequestId String? @unique @map("return_request_id")
+  returnRequest ReturnRequest? @relation(fields: [returnRequestId], references: [id])
   id              String            @id @default(cuid()) @map("id")
   code            String            @unique @map("code")
   customerId      String            @map("customer_id")
@@ -1466,6 +1471,7 @@ model Shipment {
 }
 
 model ReturnRequest {
+  storeCredit StoreCredit?
   id                  String            @id @default(cuid()) @map("id")
   code                String            @unique @map("code")
   orderId             String            @map("order_id")
@@ -1567,6 +1573,7 @@ model AutomationTrigger {
 }
 
 model AutomationExecution {
+  task CrmTask?
   id                String                    @id @default(cuid()) @map("id")
   triggerId         String                    @map("trigger_id")
   customerId        String                    @map("customer_id")
@@ -1651,4 +1658,49 @@ model InvoiceItem {
   @@index([invoiceId])
   @@index([sku])
   @@map("invoice_items")
+}
+
+model OperationRequest {
+  key       String   @id
+  actorId   String   @map("actor_id")
+  scope     String
+  inputHash String   @map("input_hash")
+  response  Json
+  createdAt DateTime @default(now()) @map("created_at")
+  @@index([createdAt])
+  @@map("operation_requests")
+}
+
+model ImportJob {
+  id          String   @id @default(cuid())
+  userId      String   @map("user_id")
+  fileName    String   @map("file_name")
+  fileHash    String   @map("file_hash")
+  status      String   @default("PENDING")
+  dryRun      Boolean  @default(false) @map("dry_run")
+  rows        Json
+  total       Int
+  processed   Int      @default(0)
+  summary     Json
+  parseErrors Json     @map("parse_errors")
+  error       String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  @@unique([userId, fileHash, dryRun])
+  @@index([status, createdAt])
+  @@map("import_jobs")
+}
+
+model CrmTask {
+  execution AutomationExecution @relation(fields: [executionId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  id String @id @default(cuid())
+  executionId String @unique @map("execution_id")
+  customerId String @map("customer_id")
+  title String
+  status String @default("OPEN")
+  completedAt DateTime? @map("completed_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  @@index([status, createdAt])
+  @@map("crm_tasks")
 }

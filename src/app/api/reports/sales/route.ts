@@ -1,9 +1,10 @@
+import { serverEnv } from "@/lib/env";
 import { NextRequest, NextResponse } from "next/server";
-import type { Prisma } from "@prisma/client";
+import { recognizedOrders } from "@/services/reporting-service";
 import { prisma } from "@/lib/db";
 import { requirePermission } from "@/lib/auth";
-import { handleApiError } from "@/lib/errors";
-import { startOfDayUtc, endOfDayUtc } from "@/lib/date";
+import { handleApiError, ValidationError } from "@/lib/errors";
+import { startOfDayInZone, endOfDayInZone } from "@/lib/date";
 import { can } from "@/lib/permissions";
 
 // Detalhe por pedido é limitado; totais e agrupamentos cobrem o período inteiro.
@@ -24,9 +25,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
     const now = new Date();
     const defaultFrom = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-    const from = searchParams.get("from") ? startOfDayUtc(searchParams.get("from") as string) : defaultFrom;
-    const to = searchParams.get("to") ? endOfDayUtc(searchParams.get("to") as string) : now;
-    const where: Prisma.OrderWhereInput = { deletedAt: null, placedAt: { gte: from, lte: to } };
+    const from = searchParams.get("from") ? startOfDayInZone(searchParams.get("from") as string, serverEnv().APP_TIMEZONE) : defaultFrom;
+    const to = searchParams.get("to") ? endOfDayInZone(searchParams.get("to") as string, serverEnv().APP_TIMEZONE) : now;
+    if (!Number.isFinite(from.getTime()) || !Number.isFinite(to.getTime()) || from > to) throw new ValidationError("Informe um período válido.");
+    const locationId = searchParams.get("locationId") || undefined;
+    const where = recognizedOrders(from, to, locationId);
 
     const [totals, itemTotals, channelGroups, statusGroups] = await Promise.all([
       prisma.order.aggregate({
@@ -39,7 +42,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
                COALESCE(SUM(oi.cost_price * oi.quantity), 0)::float8 AS cost
         FROM order_items oi
         JOIN orders o ON o.id = oi.order_id
-        WHERE o.deleted_at IS NULL AND o.placed_at BETWEEN ${from} AND ${to}
+        WHERE o.deleted_at IS NULL AND o.status::text NOT IN ('CANCELLED', 'PENDING_PAYMENT') AND o.placed_at BETWEEN ${from} AND ${to}
+          AND (${locationId ?? null}::text IS NULL OR o.location_id = ${locationId ?? null})
       `,
       prisma.order.groupBy({ by: ["channel"], where, _count: { _all: true }, _sum: { total: true } }),
       prisma.order.groupBy({ by: ["status"], where, _count: { _all: true }, _sum: { total: true } }),
@@ -142,7 +146,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
     return NextResponse.json(
       { summary, byChannel, byStatus, rows, truncated: ordersCount > rows.length, rowLimit: MAX_ROWS },
-      { headers: { "Cache-Control": "private, max-age=0, s-maxage=120, stale-while-revalidate=300" } },
+      { headers: { "Cache-Control": "private, no-store" } },
     );
   } catch (err) {
     return handleApiError(err);

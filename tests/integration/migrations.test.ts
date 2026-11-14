@@ -36,7 +36,7 @@ async function withDatabase(run: (client: Client, url: string) => Promise<void>)
 async function assertSchema(client: Client, url: string) {
   await runPrisma(["migrate", "diff", "--from-config-datasource", "--to-schema=prisma/schema.prisma", "--exit-code"], url);
   const tables = await client.query(`SELECT count(*)::int AS count FROM pg_tables WHERE schemaname = 'public' AND tablename <> '_prisma_migrations'`);
-  expect(tables.rows[0].count).toBe(49);
+  expect(tables.rows[0].count).toBe(52);
   const indexes = await client.query(`
     SELECT count(*)::int AS count FROM pg_index i
     JOIN pg_class c ON c.oid = i.indexrelid
@@ -48,7 +48,7 @@ async function assertSchema(client: Client, url: string) {
   const history = await client.query(`SELECT migration_name FROM _prisma_migrations WHERE finished_at IS NOT NULL ORDER BY migration_name`);
   expect(history.rows.map((row) => row.migration_name)).toEqual([
     "0_init", "20260921000100_security_and_search", "20260921000200_order_cancellation",
-    "20260926000100_auth_hardening", "20260926000200_money_decimal", "20261110000100_stock_position_checks",
+    "20260926000100_auth_hardening", "20260926000200_money_decimal", "20261110000100_stock_position_checks", "20261114000100_operations_and_import_jobs",
   ]);
 }
 

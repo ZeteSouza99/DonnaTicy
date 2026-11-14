@@ -1,20 +1,23 @@
 "use client";
 
+import { useDialogFocus } from "@/hooks/use-dialog-focus";
+import { useStoredCart } from "@/hooks/use-stored-cart";
+import { useCheckoutOperation } from "@/hooks/use-checkout-operation";
+import { useSessionUser } from "@/components/layout/session-context";
+import { CustomerPicker } from "@/components/pos/customer-picker";
+import { CartPanel } from "@/components/pos/cart-panel";
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { totalAvailable } from "@/lib/stock";
 import {
   Search,
   Plus,
-  Minus,
-  Trash2,
   X,
   Check,
   Loader2,
   CreditCard,
   Banknote,
   QrCode,
-  ShoppingCart,
   User as UserIcon,
   ClipboardList,
   Receipt,
@@ -72,18 +75,6 @@ interface Variant {
   color: { id: string; name: string; hexValue?: string | null };
   size: { id: string; name: string };
   stockPositions: VariantStock[];
-}
-
-interface CartItem {
-  variantId: string;
-  sku: string;
-  productName: string;
-  colorName: string;
-  colorHex?: string | null;
-  sizeName: string;
-  unitPrice: number;
-  quantity: number;
-  available: number;
 }
 
 type PaymentMethod = "CREDIT" | "DEBIT" | "PIX" | "CASH";
@@ -145,6 +136,8 @@ function num(v: number | string | null | undefined): number {
 
 export default function PdvPage(): React.ReactNode {
   const router = useRouter();
+  const sessionUser = useSessionUser();
+  const checkout = useCheckoutOperation(sessionUser.id);
 
   // -------- Lookups --------
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -157,7 +150,7 @@ export default function PdvPage(): React.ReactNode {
   const [discountAmount, setDiscountAmount] = useState("0");
   const [discountMode, setDiscountMode] = useState<"AMOUNT" | "PERCENT">("AMOUNT");
   const [discountPercent, setDiscountPercent] = useState("0");
-  const [cart, setCart] = useState<CartItem[]>([]);
+  const { cart, setCart, ready: cartReady, restored } = useStoredCart(sessionUser.id);
 
   // -------- Busca de produto --------
   const [search, setSearch] = useState("");
@@ -185,19 +178,12 @@ export default function PdvPage(): React.ReactNode {
   const [isCreatingCustomer, setIsCreatingCustomer] = useState(false);
 
   // -------- Aprovação remota de desconto (SELLER) --------
-  const [role, setRole] = useState<string | null>(null);
+  const role = sessionUser.role;
   const isSeller = REQUIRE_DISCOUNT_APPROVAL && role === "SELLER";
   const [discountRequest, setDiscountRequest] = useState<DiscountRequest | null>(null);
   const [showDiscountModal, setShowDiscountModal] = useState(false);
   const [discountReason, setDiscountReason] = useState("");
   const [isRequestingDiscount, setIsRequestingDiscount] = useState(false);
-
-  useEffect(() => {
-    fetch("/api/auth/me", { credentials: "include" })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((me: { role?: string } | null) => setRole(me?.role ?? null))
-      .catch(() => setRole(null));
-  }, []);
 
   // -------- Totais --------
   const subtotal = useMemo(
@@ -236,12 +222,8 @@ export default function PdvPage(): React.ReactNode {
   const fetchOptions = useCallback(async () => {
     setIsLoadingOptions(true);
     try {
-      const [cust, locs] = await Promise.all([
-        clientFetch<PaginatedResponse<Customer>>("/api/customers?limit=200"),
-        clientFetch<PaginatedResponse<StoreLocation>>("/api/inventory/locations?limit=100"),
-      ]);
-      setCustomers(cust.data);
-      const store = locs.data.find((l) => l.type === "STORE") ?? locs.data[0];
+      const locs = await clientFetch<PaginatedResponse<StoreLocation>>("/api/inventory/locations?limit=100");
+      const store = locs.data.find((l) => l.id === sessionUser.locationId) ?? locs.data.find((l) => l.type === "STORE") ?? locs.data[0];
       if (store) {
         setLocationId(store.id);
         setLocationName(store.name);
@@ -251,7 +233,7 @@ export default function PdvPage(): React.ReactNode {
     } finally {
       setIsLoadingOptions(false);
     }
-  }, []);
+  }, [sessionUser.locationId]);
 
   useEffect(() => {
     void fetchOptions();
@@ -309,7 +291,7 @@ export default function PdvPage(): React.ReactNode {
 
   // -------- Helpers de estoque/carrinho --------
   function getAvailable(v: Variant): number {
-    return totalAvailable(v.stockPositions);
+    return totalAvailable(v.stockPositions.filter((s) => s.locationId === locationId));
   }
 
   function addToCart(v: Variant): void {
@@ -583,16 +565,22 @@ export default function PdvPage(): React.ReactNode {
     }
 
     try {
-      const created = await clientFetch<{
+      const created = await checkout.submit<{
         code: string;
         createdAt: string;
         subtotal: number;
         discountTotal: number;
         total: number;
         customer?: { fullName: string } | null;
-      }>("/api/orders", {
-        method: "POST",
-        body: {
+        seller?: { name: string } | null;
+        couponCode?: string;
+        couponDiscount?: number;
+        usedStoreCreditAmount?: number | string | null;
+        usedStoreCredit?: { code: string } | null;
+        items: { quantity: number; unitPrice: number | string; variant: {
+          product: { name: string }; color: { name: string }; size: { name: string };
+        } }[];
+      }>({
           channel: "STORE",
           customerId: customerId || undefined,
           locationId: locationId || undefined,
@@ -604,7 +592,6 @@ export default function PdvPage(): React.ReactNode {
               : undefined,
           items: cart.map((i) => ({ variantId: i.variantId, quantity: i.quantity })),
           payments: adjusted,
-        },
       });
       if (RECEIPT_PRINTING) {
         const methodLabel = (m: PaymentMethod): string =>
@@ -614,21 +601,28 @@ export default function PdvPage(): React.ReactNode {
           code: created.code,
           createdAt: created.createdAt ?? new Date().toISOString(),
           customerName: created.customer?.fullName,
-          items: cart.map((i) => ({
-            name: `${i.productName} ${i.colorName} ${i.sizeName}`.trim(),
+          sellerName: created.seller?.name ?? sessionUser.name,
+          items: created.items.map((i) => ({
+            name: i.variant.product.name,
+            color: i.variant.color.name,
+            size: i.variant.size.name,
             quantity: i.quantity,
-            unitPrice: i.unitPrice,
-            totalPrice: i.unitPrice * i.quantity,
+            unitPrice: num(i.unitPrice),
+            totalPrice: Math.round(num(i.unitPrice) * 100) * i.quantity / 100,
           })),
           subtotal: num(created.subtotal),
           discountTotal: num(created.discountTotal),
+          couponCode: created.couponCode,
+          couponDiscount: created.couponDiscount,
+          storeCreditCode: created.usedStoreCredit?.code,
+          usedStoreCreditAmount: num(created.usedStoreCreditAmount),
           total: num(created.total),
-          payments: adjusted.map((p) => ({
+          payments: payments.filter((p) => Number(p.amount) > 0).map((p) => ({
             label: methodLabel(p.method),
-            amount: p.amount,
+            amount: Number(p.amount),
             installments: p.installments,
           })),
-          change: Math.max(0, Math.round((paidSum - toPay) * 100) / 100),
+          change: Math.max(0, Math.round((paidSum - num(created.total)) * 100) / 100),
         });
       }
       setSuccess("Venda concluída com sucesso!");
@@ -647,7 +641,10 @@ export default function PdvPage(): React.ReactNode {
   // Render
   // ----------------------------------------------------------------------------
 
-  if (isLoadingOptions) return <LoadingSpinner />;
+  useDialogFocus(checkout.pending ? null : showNewCustomer ? "pos-new-customer" : showDiscountModal ? "pos-discount" : showPayment ? "pos-payment" : null, () => { if(showNewCustomer) setShowNewCustomer(false); else if(showDiscountModal) setShowDiscountModal(false); else setShowPayment(false); });
+  if (isLoadingOptions || !cartReady) return <LoadingSpinner />;
+  if(checkout.pending) return <div className="panel mx-auto max-w-lg space-y-5"><h1>Confirmando sua venda</h1><p className="text-sm text-gray-600">Aguarde a confirmação. Se a conexão cair, retome por aqui para evitar uma venda duplicada.</p>{error && <p role="alert" className="text-sm text-red-700">{error}</p>}<button className="btn-primary w-full" disabled={isSubmitting} onClick={async()=>{setIsSubmitting(true);setError(null);try { const result = await checkout.submit<{code:string}>(); clearCart();setShowPayment(false);setSuccess(`Venda ${result.code} confirmada.`); } catch(e) {setError(e instanceof Error ? e.message : "Não foi possível verificar.");} finally {setIsSubmitting(false);}}}>{isSubmitting ? "Aguarde…" : "Verificar e concluir venda"}</button></div>;
+
 
   const hasSearch = search.trim().length >= 2;
   const showResults = hasSearch;
@@ -655,12 +652,12 @@ export default function PdvPage(): React.ReactNode {
   const showEmpty = !hasSearch && cart.length === 0;
 
   return (
-    <div className="-m-4 sm:-m-6 md:-m-8 flex min-h-[calc(100vh-4rem)] flex-col bg-gray-50 lg:h-[calc(100vh-4rem)] lg:min-h-0 lg:flex-row">
+    <div className="pdv-layout flex min-h-[70dvh] flex-col gap-5 lg:flex-row">
       {/* ============== COLUNA PRINCIPAL ============== */}
-      <div className="flex flex-1 flex-col p-3 pb-40 sm:p-4 lg:p-6 lg:pb-6">
+      <div className="flex min-w-0 flex-1 flex-col pb-60 lg:pb-0">
         {/* Header */}
         <div className="mb-3 flex flex-wrap items-center gap-2 sm:gap-3">
-          <h1 className="flex-1 text-lg font-bold text-gray-900 sm:text-xl">PDV — Nova Venda</h1>
+          <h1 className="w-full text-lg sm:w-auto sm:flex-1 font-bold text-gray-900 sm:text-xl">Nova venda</h1>
           <button
             type="button"
             onClick={() => router.push("/dashboard/vendas/troca")}
@@ -687,6 +684,7 @@ export default function PdvPage(): React.ReactNode {
           </button>
         </div>
 
+        {restored && cart.length > 0 && <p className="mb-3 rounded-xl bg-brand-50 px-3 py-2 text-xs text-brand-800">Carrinho recuperado. Preços e estoque serão conferidos ao concluir.</p>}
         {/* Search */}
         <div className="relative mb-3">
           <Search
@@ -796,83 +794,11 @@ export default function PdvPage(): React.ReactNode {
           </div>
         )}
 
-        {showCart && (
-          <div className="flex flex-1 flex-col overflow-hidden rounded-xl border border-gray-200 bg-white">
-            <div className="flex items-center justify-between border-b border-gray-200 px-4 py-2">
-              <h2 className="flex items-center gap-2 text-sm font-semibold text-gray-900">
-                <ShoppingCart size={16} />
-                Carrinho ({itemCount} {itemCount === 1 ? "item" : "itens"})
-              </h2>
-              <button
-                type="button"
-                onClick={clearCart}
-                className="inline-flex items-center gap-1 text-xs text-red-600 hover:text-red-800"
-              >
-                <X size={12} /> Limpar
-              </button>
-            </div>
-            <ul className="flex-1 divide-y divide-gray-100 overflow-y-auto">
-              {cart.map((i) => (
-                <li key={i.variantId} className="flex flex-wrap items-center gap-2 px-3 py-3 sm:flex-nowrap sm:gap-3 sm:px-4">
-                  <span
-                    className="h-9 w-9 shrink-0 rounded-full border border-gray-200"
-                    style={{ background: i.colorHex ?? "#e5e7eb" }}
-                    title={i.colorName}
-                  />
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-semibold text-gray-900">
-                      {i.productName}
-                    </div>
-                    <div className="truncate text-xs text-gray-500">
-                      {i.sku} · {i.colorName} / {i.sizeName} · {formatBRL(i.unitPrice)} / UN
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <button
-                      type="button"
-                      onClick={() => changeQty(i.variantId, -1)}
-                      className="rounded-full border border-gray-300 p-1.5 hover:bg-gray-100"
-                      aria-label="Diminuir"
-                    >
-                      <Minus size={14} />
-                    </button>
-                    <input
-                      type="number"
-                      min={1}
-                      max={i.available}
-                      value={i.quantity}
-                      onChange={(e) => setQty(i.variantId, Number(e.target.value))}
-                      className="w-12 rounded border border-gray-300 px-1 py-1 text-center text-sm"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => changeQty(i.variantId, +1)}
-                      className="rounded-full border border-gray-300 p-1.5 hover:bg-gray-100"
-                      aria-label="Aumentar"
-                    >
-                      <Plus size={14} />
-                    </button>
-                  </div>
-                  <div className="ml-auto w-20 text-right text-sm font-bold text-gray-900 sm:w-24">
-                    {formatBRL(i.unitPrice * i.quantity)}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => removeFromCart(i.variantId)}
-                    className="rounded p-1.5 text-red-500 hover:bg-red-50"
-                    aria-label="Remover"
-                  >
-                    <Trash2 size={16} />
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
+        {showCart && <CartPanel cart={cart} itemCount={itemCount} clearCart={clearCart} changeQty={changeQty} setQty={setQty} removeFromCart={removeFromCart} />}
       </div>
 
       {/* ============== SIDEBAR DE PEDIDO (mobile: bottom bar fixa | desktop: aside) ============== */}
-      <aside className="fixed inset-x-0 bottom-0 z-30 flex shrink-0 flex-col gap-2 border-t border-gray-200 bg-white p-3 shadow-[0_-4px_12px_rgba(0,0,0,0.05)] sm:gap-3 lg:relative lg:inset-auto lg:w-80 lg:gap-3 lg:border-l lg:border-t-0 lg:p-6 lg:shadow-none">
+      <aside className="mobile-action-bar pdv-checkout flex shrink-0 flex-col gap-2 bg-white p-4 lg:sticky lg:top-24 lg:h-fit lg:w-80 lg:rounded-2xl lg:border lg:border-gray-200 lg:p-6">
         {/* Totais */}
         <div className="space-y-1.5 lg:space-y-2">
           <div className="flex items-center justify-between text-sm">
@@ -1045,8 +971,8 @@ export default function PdvPage(): React.ReactNode {
 
       {/* ============== MODAL: SOLICITAR DESCONTO ============== */}
       {showDiscountModal && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4">
-          <div className="w-full max-w-sm rounded-t-2xl bg-white p-4 shadow-xl sm:rounded-xl sm:p-5">
+        <div className="fixed inset-0 z-[80] flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4">
+          <div id="pos-discount" role="dialog" aria-modal="true" aria-label="Solicitar desconto" tabIndex={-1} className="w-full max-w-sm rounded-t-2xl bg-white p-4 shadow-xl sm:rounded-xl sm:p-5">
             <div className="mb-4 flex items-center justify-between">
               <h3 className="text-lg font-semibold text-gray-900">Solicitar desconto</h3>
               <button
@@ -1100,8 +1026,8 @@ export default function PdvPage(): React.ReactNode {
 
       {/* ============== MODAL: NOVO CLIENTE ============== */}
       {showNewCustomer && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4">
-          <div className="w-full max-w-sm rounded-t-2xl bg-white p-4 shadow-xl sm:rounded-xl sm:p-5">
+        <div className="fixed inset-0 z-[80] flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4">
+          <div id="pos-new-customer" role="dialog" aria-modal="true" aria-label="Novo cliente" tabIndex={-1} className="w-full max-w-sm rounded-t-2xl bg-white p-4 shadow-xl sm:rounded-xl sm:p-5">
             <div className="mb-4 flex items-center justify-between">
               <h3 className="text-lg font-semibold text-gray-900">Novo cliente</h3>
               <button
@@ -1166,7 +1092,7 @@ export default function PdvPage(): React.ReactNode {
       {/* ============== MODAL: PAGAMENTO ============== */}
       {showPayment && (
         <div className="fixed inset-0 z-60 flex items-end justify-center bg-black/60 p-0 sm:items-center sm:p-4">
-          <div className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-t-2xl bg-white p-4 shadow-xl sm:rounded-xl sm:p-5">
+          <div id="pos-payment" inert={showNewCustomer} role="dialog" aria-modal="true" aria-label="Pagamento" tabIndex={-1} className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-t-2xl bg-white p-4 shadow-xl sm:rounded-xl sm:p-5">
             <div className="mb-4 flex items-center justify-between">
               <h3 className="text-lg font-semibold text-gray-900">Pagamento</h3>
               <button
@@ -1190,23 +1116,7 @@ export default function PdvPage(): React.ReactNode {
                 Cliente <span className="font-normal normal-case text-gray-400">(opcional)</span>
               </label>
               <div className="flex gap-1.5">
-                <select
-                  value={customerId}
-                  onChange={(e) => {
-                    setCustomerId(e.target.value);
-                    if (appliedCredit && appliedCredit.customerId !== e.target.value) {
-                      setAppliedCredit(null);
-                    }
-                  }}
-                  className="flex-1 rounded-lg border border-gray-300 px-2 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100"
-                >
-                  <option value="">Consumidor Final</option>
-                  {customers.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.fullName}
-                    </option>
-                  ))}
-                </select>
+                <CustomerPicker value={customerId} selectedName={customers.find((c)=>c.id===customerId)?.fullName} onChange={(id)=>{setCustomerId(id); if(appliedCredit?.customerId !== id) setAppliedCredit(null);}} />
                 <button
                   type="button"
                   onClick={() => setShowNewCustomer(true)}

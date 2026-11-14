@@ -4,9 +4,12 @@ import { requirePermission } from "@/lib/auth";
 import { handleApiError, NotFoundError, ValidationError, ConflictError } from "@/lib/errors";
 import { getPaginationParams, paginate } from "@/lib/pagination";
 import { createExchangeSchema } from "@/schemas/sales";
-import { createAuditLog, getClientIp } from "@/lib/audit";
+import { createAuditLogTx, getClientIp } from "@/lib/audit";
 import { generateCode } from "@/lib/code-generator";
 import { fromCents, toCents } from "@/lib/money";
+import { getReturnBalances } from "@/services/return-balance-service";
+import { partialItemCents } from "@/lib/allocations";
+import { runIdempotent } from "@/services/idempotency-service";
 import { lockOrder } from "@/services/order-lock";
 import { deductAvailableStock, lockStockPositions } from "@/services/stock-lock";
 
@@ -23,6 +26,7 @@ interface ReturnedItemRecord {
 }
 
 interface NewItemRecord {
+  costPrice: number;
   variantId: string;
   sku: string;
   quantity: number;
@@ -73,7 +77,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const body = await request.json();
     const input = createExchangeSchema.parse(body);
 
-    const exchange = await prisma.$transaction(async (tx) => {
+    const exchange = await runIdempotent(session.sub, "exchanges", request.headers.get("Idempotency-Key"), input, async (tx) => {
       await lockOrder(tx, input.orderId);
       const order = await tx.order.findFirst({
         where: { id: input.orderId, deletedAt: null },
@@ -94,21 +98,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       });
       if (!location) throw new ValidationError("Local de estoque não encontrado.");
 
-      // Quantidades já devolvidas em trocas anteriores deste pedido
-      const previousExchanges = await tx.exchange.findMany({
-        where: { orderId: order.id },
-        select: { returnedItems: true },
-      });
-      const alreadyReturned = new Map<string, number>();
-      for (const prev of previousExchanges) {
-        const items = prev.returnedItems as unknown as ReturnedItemRecord[];
-        for (const it of items) {
-          alreadyReturned.set(
-            it.orderItemId,
-            (alreadyReturned.get(it.orderItemId) ?? 0) + it.quantity,
-          );
-        }
-      }
+      if (order.channel !== "STORE" && order.status === "PAID") throw new ConflictError("Pedido ainda reservado, sem saída física. Cancele o pedido ou conclua a separação antes de registrar a devolução.");
+      const balances = await getReturnBalances(tx, order.id);
 
       // ---- Itens devolvidos: validação + ENTRADA de estoque ----
       let amountReturnedCents = 0;
@@ -125,7 +116,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         if (!orderItem) {
           throw new ValidationError("Item devolvido não pertence ao pedido informado.");
         }
-        const remaining = orderItem.quantity - (alreadyReturned.get(orderItem.id) ?? 0);
+        const remaining = balances.get(orderItem.id)!.remaining;
         if (ret.quantity > remaining) {
           throw new ValidationError(
             `Quantidade devolvida do SKU ${orderItem.variant.sku} excede o disponível para troca (${remaining}).`,
@@ -133,8 +124,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         }
 
         // Valor efetivamente pago por unidade (considera desconto do item)
-        const unitValue = Number(orderItem.totalPrice) / orderItem.quantity;
-        amountReturnedCents += Math.round((toCents(orderItem.totalPrice) * ret.quantity) / orderItem.quantity);
+        const balance = balances.get(orderItem.id)!;
+        const itemCents = partialItemCents(balance.netCents, balance.quantity, balance.settled, ret.quantity);
+        const unitValue = fromCents(itemCents) / ret.quantity;
+        amountReturnedCents += itemCents;
         returnedRecords.push({
           orderItemId: orderItem.id,
           variantId: orderItem.variantId,
@@ -150,7 +143,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       for (const item of input.newItems) {
         const variant = await tx.productVariant.findFirst({
           where: { id: item.variantId, deletedAt: null },
-          include: { product: { select: { basePrice: true } } },
+          include: { product: { select: { basePrice: true, costPrice: true } } },
         });
         if (!variant) throw new ValidationError(`Variante ${item.variantId} não encontrada.`);
         const unitPriceCents = toCents(variant.product.basePrice) + toCents(variant.additionalCost);
@@ -160,6 +153,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           sku: variant.sku,
           quantity: item.quantity,
           unitPrice: fromCents(unitPriceCents),
+          costPrice: Number(variant.product.costPrice),
         });
       }
 
@@ -194,6 +188,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         variantId: item.variantId,
       })));
 
+      const settingsRow = await tx.setting.findUnique({ where: { key: "operational" } });
+      const validity = Number((settingsRow?.value as { storeCreditValidityDays?: number } | null)?.storeCreditValidityDays ?? 0);
+      const creditExpiresAt = validity > 0 ? new Date(Date.now() + validity * 86400000) : null;
       const created = await tx.exchange.create({
         data: {
           code: generateCode("TRC"),
@@ -296,6 +293,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
             amount: creditAmount,
             remainingAmount: creditAmount,
             status: "ACTIVE",
+            expiresAt: creditExpiresAt,
             originOrderId: order.id,
           },
         });
@@ -305,6 +303,20 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           data: { storeCreditId: credit.id },
         });
       }
+
+    await createAuditLogTx(tx,
+      { session, ipAddress: getClientIp(request) },
+      "CREATE",
+      "Exchange",
+      created.id,
+      {
+        code: created.code,
+        orderId: created.orderId,
+        difference: created.difference,
+        settlementType: created.settlementType,
+      },
+    );
+
 
       return tx.exchange.findUniqueOrThrow({
         where: { id: created.id },
@@ -317,19 +329,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         },
       });
     });
-
-    await createAuditLog(
-      { session, ipAddress: getClientIp(request) },
-      "CREATE",
-      "Exchange",
-      exchange.id,
-      {
-        code: exchange.code,
-        orderId: exchange.orderId,
-        difference: exchange.difference,
-        settlementType: exchange.settlementType,
-      },
-    );
 
     return NextResponse.json(exchange, { status: 201 });
   } catch (error) {

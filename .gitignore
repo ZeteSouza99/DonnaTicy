@@ -68,3 +68,5 @@ cookies.txt
 # saída local do deploy manual e scripts pessoais do editor
 /.deploy.log
 /.vscode/
+
+.next-preview/

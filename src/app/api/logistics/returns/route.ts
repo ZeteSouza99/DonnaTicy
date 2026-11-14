@@ -8,6 +8,8 @@ import { createReturnRequestSchema } from "@/schemas/logistics";
 import { createAuditLogTx, getClientIp } from "@/lib/audit";
 import { generateCode } from "@/lib/code-generator";
 import { parseEnumParam } from "@/lib/query-params";
+import { getReturnBalances } from "@/services/return-balance-service";
+import { runIdempotent } from "@/services/idempotency-service";
 import { lockOrder } from "@/services/order-lock";
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
@@ -51,10 +53,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const body = await request.json();
     const input = createReturnRequestSchema.parse(body);
 
-    const returnReq = await prisma.$transaction(async (tx) => {
+    const returnReq = await runIdempotent(session.sub, "returns", request.headers.get("Idempotency-Key"), input, async (tx) => {
       const order = await lockOrder(tx, input.orderId);
-      if (order.status === "CANCELLED") {
-        throw new ConflictError("Pedido cancelado não pode receber devolução.");
+      if (order.status === "CANCELLED" || order.status === "PENDING_PAYMENT") {
+        throw new ConflictError("Somente pedidos pagos podem receber devolução.");
       }
       const customer = await tx.customer.findFirst({
         where: { id: input.customerId, deletedAt: null },
@@ -62,14 +64,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       if (!customer) throw new NotFoundError("Cliente");
       if (customer.id !== order.customerId) throw new ValidationError("O cliente não pertence ao pedido informado.");
 
-      const orderItems = await tx.orderItem.findMany({ where: { orderId: order.id } });
+      if (order.channel !== "STORE" && order.status === "PAID") throw new ConflictError("Pedido ainda reservado, sem saída física. Cancele o pedido ou conclua a separação antes de registrar a devolução.");
+      const balances = await getReturnBalances(tx, order.id);
       const seenItems = new Set<string>();
       for (const item of input.items) {
-        const original = orderItems.find((candidate) => candidate.id === item.orderItemId);
+        const original = balances.get(item.orderItemId);
         if (!original || original.variantId !== item.variantId || seenItems.has(item.orderItemId)) {
           throw new ValidationError("Item duplicado ou variante não pertencente ao pedido informado.");
         }
-        if (item.quantity > original.quantity) throw new ValidationError("Quantidade devolvida excede a quantidade do pedido.");
+        if (item.quantity > original.remaining) throw new ValidationError("Quantidade excede o saldo disponível após trocas e devoluções anteriores.");
         seenItems.add(item.orderItemId);
       }
 

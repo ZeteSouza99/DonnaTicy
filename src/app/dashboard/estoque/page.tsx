@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
+import { useApiQuery } from "@/hooks/use-api-query";
+import { useDebounce } from "@/hooks/use-debounce";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, Save, X, Pencil, Check, Loader2, Trash2 } from "lucide-react";
+import { AlertTriangle, X, Pencil, Check, Loader2, Trash2 } from "lucide-react";
 import type { ChangeEvent } from "react";
 import { clientFetch } from "@/lib/client-fetch";
 import { LoadingSpinner, EmptyState, ErrorMessage } from "@/components/ui/feedback";
@@ -15,6 +17,7 @@ import { Pagination } from "@/components/ui/pagination";
 interface StockPosition {
   id: string;
   quantity: number;
+  reservedQty: number;
   minStock: number;
   safetyStock: number;
   maxStock: number;
@@ -49,11 +52,12 @@ const INPUT_CELL =
   "w-20 rounded border border-brand-300 bg-brand-50 px-2 py-1 text-sm text-center focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500";
 
 function statusBadge(s: StockPosition): React.ReactNode {
-  if (s.quantity <= 0)
+  const available = s.quantity - s.reservedQty;
+  if (available <= 0)
     return <span className="inline-flex items-center gap-1 text-xs font-semibold text-red-700"><AlertTriangle size={12} /> Sem estoque</span>;
-  if (s.quantity <= s.minStock)
+  if (s.minStock > 0 && available <= s.minStock)
     return <span className="text-xs font-semibold text-orange-600">Abaixo do mínimo</span>;
-  if (s.quantity <= s.safetyStock)
+  if (s.safetyStock > 0 && available <= s.safetyStock)
     return <span className="text-xs font-semibold text-yellow-600">Atenção</span>;
   return <span className="text-xs font-semibold text-green-600">OK</span>;
 }
@@ -64,9 +68,7 @@ function statusBadge(s: StockPosition): React.ReactNode {
 
 export default function EstoquePage(): React.ReactNode {
   const router = useRouter();
-  const [stock, setStock] = useState<StockResponse | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+
   const [belowMin, setBelowMin] = useState(false);
   const [page, setPage] = useState(1);
 
@@ -81,22 +83,14 @@ export default function EstoquePage(): React.ReactNode {
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
-  const fetchStock = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const params = new URLSearchParams({ page: String(page), limit: "50" });
-      if (belowMin) params.set("belowMin", "true");
-      const data = await clientFetch<StockResponse>(`/api/inventory/stock?${params}`);
-      setStock(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Erro ao carregar estoque.");
-    } finally {
-      setIsLoading(false);
-    }
-  }, [belowMin, page]);
-
-  useEffect(() => { fetchStock(); }, [fetchStock]);
+  const [search,setSearch] = useState("");
+  const [locationId,setLocationId] = useState("");
+  const term = useDebounce(search,250);
+  const query = new URLSearchParams({page:String(page),limit:"30",search:term});
+  if(belowMin) query.set("belowMin","true"); if(locationId) query.set("locationId",locationId);
+  const {data:stock,loading:isLoading,error,refresh:fetchStock} = useApiQuery<StockResponse>(`/api/inventory/stock?${query}`);
+  const {data:locations} = useApiQuery<{data:Array<{id:string;name:string}>}>("/api/inventory/locations?limit=100");
+  useEffect(()=>{setBelowMin(new URLSearchParams(window.location.search).get("belowMin")==="true");},[]);
   useEffect(() => { setSelectedProductIds(new Set()); setDeleteError(null); }, [belowMin, page]);
 
   // ---------------------------------------------------------------------------
@@ -194,19 +188,12 @@ export default function EstoquePage(): React.ReactNode {
     });
 
     try {
-      const updated = await clientFetch<StockPosition>(`/api/inventory/stock/${id}`, {
+      await clientFetch<StockPosition>(`/api/inventory/stock/${id}`, {
         method: "PATCH",
         body: values,
       });
 
-      // Update row in-place
-      setStock((prev) => {
-        if (!prev) return prev;
-        return {
-          ...prev,
-          data: prev.data.map((sp) => (sp.id === id ? { ...sp, ...updated } : sp)),
-        };
-      });
+      fetchStock();
 
       cancelEditing(id);
     } catch (err) {
@@ -233,7 +220,7 @@ export default function EstoquePage(): React.ReactNode {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="page-heading">
         <h1 className="text-2xl font-bold text-gray-900">Gestão de Estoque</h1>
         <button
           onClick={() => router.push("/dashboard/estoque/movimentar")}
@@ -243,7 +230,9 @@ export default function EstoquePage(): React.ReactNode {
         </button>
       </div>
 
-      <div className="flex items-center gap-4">
+      <div className="flex flex-wrap items-center gap-3 rounded-xl border border-gray-200 bg-white p-3">
+        <input aria-label="Buscar estoque por produto ou SKU" className="field-input !w-auto min-w-0 flex-1" placeholder="Buscar produto ou SKU…" value={search} onChange={(e)=>{setSearch(e.target.value);setPage(1);}} />
+        <select aria-label="Filtrar local de estoque" className="field-input !w-auto" value={locationId} onChange={(e)=>{setLocationId(e.target.value);setPage(1);}}><option value="">Todos os locais</option>{locations?.data.map((l)=><option key={l.id} value={l.id}>{l.name}</option>)}</select>
         <label className="flex items-center gap-2 text-sm text-gray-600">
           <input
             type="checkbox"
@@ -281,17 +270,17 @@ export default function EstoquePage(): React.ReactNode {
         </div>
       )}
 
-      {isLoading && <LoadingSpinner />}
+      {isLoading && !stock && <LoadingSpinner />}
       {error && <ErrorMessage message={error} onRetry={fetchStock} />}
 
-      {!isLoading && !error && stock && stock.data.length === 0 && (
+      {!error && stock && stock.data.length === 0 && (
         <EmptyState title="Nenhuma posição de estoque" description="Nenhum item encontrado com os filtros selecionados." />
       )}
 
-      {!isLoading && !error && stock && stock.data.length > 0 && (
+      {!error && stock && stock.data.length > 0 && (
         <div className="rounded-lg border bg-white">
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="responsive-table w-full text-sm">
               <thead>
                 <tr className="border-b bg-gray-50 text-left text-xs font-medium uppercase text-gray-500">
                   <th className="w-10 px-4 py-3">
@@ -309,7 +298,9 @@ export default function EstoquePage(): React.ReactNode {
                   <th className="px-4 py-3">Cor</th>
                   <th className="px-4 py-3">Tam.</th>
                   <th className="px-4 py-3">Local</th>
-                  <th className="px-4 py-3 text-center">Qtd</th>
+                  <th className="px-4 py-3 text-center">Físico</th>
+                  <th className="px-4 py-3 text-center">Reservado</th>
+                  <th className="px-4 py-3 text-center">Disponível</th>
                   <th className="px-4 py-3 text-center">Mín.</th>
                   <th className="px-4 py-3 text-center">Segur.</th>
                   <th className="px-4 py-3 text-center">Máx.</th>
@@ -327,7 +318,7 @@ export default function EstoquePage(): React.ReactNode {
 
                   return (
                     <tr key={sp.id} className={`border-b hover:bg-gray-50 ${isEditing ? "bg-brand-50" : ""} ${selected ? "bg-brand-50/50" : ""} ${rowError ? "bg-red-50" : ""}`}>
-                      <td className="w-10 px-4 py-2">
+                      <td data-label="Selecionar" className="w-10 px-4 py-2">
                         <input
                           type="checkbox"
                           checked={selected}
@@ -337,9 +328,9 @@ export default function EstoquePage(): React.ReactNode {
                           className="h-4 w-4 cursor-pointer rounded border-gray-300 text-brand-600 focus:ring-brand-500 disabled:opacity-50"
                         />
                       </td>
-                      <td className="px-4 py-2 font-mono text-xs text-gray-700">{sp.variant.sku}</td>
-                      <td className="px-4 py-2">{sp.variant.product.name}</td>
-                      <td className="px-4 py-2">
+                      <td data-label="SKU" className="px-4 py-2 font-mono text-xs text-gray-700">{sp.variant.sku}</td>
+                      <td data-label="Produto" className="px-4 py-2">{sp.variant.product.name}</td>
+                      <td data-label="Cor" className="px-4 py-2">
                         <span className="inline-flex items-center gap-1.5">
                           {sp.variant.color.hexValue && (
                             <span className="inline-block h-3 w-3 rounded-full border border-gray-300" style={{ backgroundColor: sp.variant.color.hexValue }} />
@@ -347,11 +338,11 @@ export default function EstoquePage(): React.ReactNode {
                           {sp.variant.color.name}
                         </span>
                       </td>
-                      <td className="px-4 py-2">{sp.variant.size.name}</td>
-                      <td className="px-4 py-2">{sp.location.name}</td>
+                      <td data-label="Tamanho" className="px-4 py-2">{sp.variant.size.name}</td>
+                      <td data-label="Local" className="px-4 py-2">{sp.location.name}</td>
 
                       {/* Quantity */}
-                      <td className="px-4 py-2 text-center">
+                      <td data-label="Físico" className="px-4 py-2 text-center">
                         {isEditing ? (
                           <input type="number" min={0} value={vals?.quantity ?? 0}
                             onChange={(e) => updateField(sp.id, "quantity", e.target.value)}
@@ -361,8 +352,10 @@ export default function EstoquePage(): React.ReactNode {
                         )}
                       </td>
 
+                      <td data-label="Reservado" className="px-4 py-2 text-center text-gray-500">{sp.reservedQty}</td>
+                      <td data-label="Disponível" className="px-4 py-2 text-center font-semibold text-brand-700">{sp.quantity - sp.reservedQty}</td>
                       {/* Min Stock */}
-                      <td className="px-4 py-2 text-center">
+                      <td data-label="Mínimo" className="px-4 py-2 text-center">
                         {isEditing ? (
                           <input type="number" min={0} value={vals?.minStock ?? 0}
                             onChange={(e) => updateField(sp.id, "minStock", e.target.value)}
@@ -373,7 +366,7 @@ export default function EstoquePage(): React.ReactNode {
                       </td>
 
                       {/* Safety Stock */}
-                      <td className="px-4 py-2 text-center">
+                      <td data-label="Segurança" className="px-4 py-2 text-center">
                         {isEditing ? (
                           <input type="number" min={0} value={vals?.safetyStock ?? 0}
                             onChange={(e) => updateField(sp.id, "safetyStock", e.target.value)}
@@ -384,7 +377,7 @@ export default function EstoquePage(): React.ReactNode {
                       </td>
 
                       {/* Max Stock */}
-                      <td className="px-4 py-2 text-center">
+                      <td data-label="Máximo" className="px-4 py-2 text-center">
                         {isEditing ? (
                           <input type="number" min={0} value={vals?.maxStock ?? 0}
                             onChange={(e) => updateField(sp.id, "maxStock", e.target.value)}
@@ -395,12 +388,12 @@ export default function EstoquePage(): React.ReactNode {
                       </td>
 
                       {/* Status */}
-                      <td className="px-4 py-2 text-center">
+                      <td data-label="Status" className="px-4 py-2 text-center">
                         {statusBadge(isEditing && vals ? { ...sp, ...vals } : sp)}
                       </td>
 
                       {/* Actions */}
-                      <td className="px-4 py-2 text-center">
+                      <td data-label="Ações" className="px-4 py-2 text-center">
                         {isEditing ? (
                           <div className="inline-flex items-center gap-1">
                             <button onClick={() => saveRow(sp.id)} disabled={isSaving}

@@ -1,3 +1,5 @@
+import { executableAutomationSchema } from "@/lib/automation-config";
+import { ValidationError } from "@/lib/errors";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requirePermission } from "@/lib/auth";
@@ -50,6 +52,8 @@ export async function PUT(request: NextRequest, { params }: RouteParams): Promis
 
     const existing = await prisma.automationTrigger.findFirst({ where: { id, deletedAt: null } });
     if (!existing) throw new NotFoundError("Automação");
+
+    if ((input.isActive ?? existing.isActive) && !executableAutomationSchema.safeParse({ ...existing, ...input }).success) throw new ValidationError("Esta regra não possui executor configurado. Mantenha-a inativa.");
 
     const trigger = await prisma.automationTrigger.update({
       where: { id },

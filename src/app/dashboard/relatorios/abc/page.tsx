@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { clientFetch } from "@/lib/client-fetch";
+import { useState } from "react";
+import { useApiQuery } from "@/hooks/use-api-query";
+import { ErrorMessage } from "@/components/ui/feedback";
 import { ReportShell, KpiBox } from "@/components/reports/report-shell";
 import { formatBRL, formatNumber, formatPct } from "@/lib/format";
 import { toLocalDateInputValue } from "@/lib/date";
@@ -46,17 +47,9 @@ export default function AbcReportPage(): React.ReactNode {
   const ago = new Date(today.getTime() - 90 * 24 * 60 * 60 * 1000);
   const [from, setFrom] = useState(isoDate(ago));
   const [to, setTo] = useState(isoDate(today));
-  const [data, setData] = useState<Resp | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  const load = (): void => {
-    setLoading(true);
-    clientFetch<Resp>(`/api/reports/abc?from=${from}&to=${to}`)
-      .then(setData)
-      .finally(() => setLoading(false));
-  };
-
-  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+  const [queryUrl, setQueryUrl] = useState(`/api/reports/abc?from=${from}&to=${to}`);
+  const { data, loading, error, refresh } = useApiQuery<Resp>(queryUrl);
+  const load = () => { setQueryUrl(`/api/reports/abc?from=${from}&to=${to}`); refresh(); };
 
   return (
     <ReportShell
@@ -73,6 +66,7 @@ export default function AbcReportPage(): React.ReactNode {
         </div>
       }
     >
+      {error && <ErrorMessage message={error} onRetry={refresh}/>}
       {loading || !data ? (
         <div className="flex items-center justify-center py-12"><Loader2 className="animate-spin" /></div>
       ) : (

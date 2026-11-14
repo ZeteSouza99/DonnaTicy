@@ -1,4 +1,5 @@
 const iconv = require('iconv-lite')
+const { clean, code128Bits } = require('./receipt-layout')
 
 const CMD = {
   INIT: Buffer.from([0x1B, 0x40]),
@@ -35,7 +36,7 @@ class EscPosBuilder {
   }
 
   text(str) {
-    return this.push(iconv.encode(str, 'cp850'))
+    return this.push(iconv.encode(clean(str), 'cp850'))
   }
 
   newline() {
@@ -66,6 +67,28 @@ class EscPosBuilder {
     return this.text(str).newline()
   }
 
+  wrapped(str, columns = COLS) {
+    let line = ''
+    for (const word of clean(str).split(/\s+/)) {
+      if (line && line.length + word.length + 1 > columns) { this.line(line); line = '' }
+      let rest = word
+      while (rest.length > columns) {
+        this.line(rest.slice(0, columns))
+        rest = rest.slice(columns)
+      }
+      if (rest) line += (line ? ' ' : '') + rest
+    }
+    if (line) this.line(line)
+    return this
+  }
+
+  barcode128(value) {
+    if (!code128Bits(value)) return this
+    const data = Buffer.from('{B' + value.replace(/\{/g, '{{'), 'ascii')
+    return this.push(Buffer.from([0x1d, 0x48, 0, 0x1d, 0x68, 72, 0x1d, 0x77, 2, 0x1d, 0x6b, 73, data.length]))
+      .push(data).newline()
+  }
+
   centerLine(str) {
     this.alignCenter()
     this.text(str).newline()
@@ -73,10 +96,12 @@ class EscPosBuilder {
   }
 
   leftRight(left, right) {
+    left = clean(left)
+    right = clean(right)
     const gap = COLS - left.length - right.length
     if (gap < 1) {
-      this.text(left).newline()
-      this.alignRight().text(right).newline().alignLeft()
+      this.wrapped(left)
+      this.alignRight().wrapped(right).alignLeft()
     } else {
       this.text(left + ' '.repeat(gap) + right).newline()
     }

@@ -74,3 +74,25 @@ export function startOfMonthInZone(reference: Date, timeZone: string, monthOffse
   const guess = localMidnight - zoneOffsetMs(localMidnight, timeZone);
   return new Date(localMidnight - zoneOffsetMs(guess, timeZone));
 }
+
+/** Data civil no fuso da loja, com validação de calendário. */
+export function startOfDayInZone(value: string, timeZone: string): Date {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return new Date(NaN);
+  const wall = new Date(`${value}T00:00:00Z`);
+  if (!Number.isFinite(wall.getTime()) || wall.toISOString().slice(0, 10) !== value) return new Date(NaN);
+  const guess = wall.getTime() - zoneOffsetMs(wall.getTime(), timeZone);
+  return new Date(wall.getTime() - zoneOffsetMs(guess, timeZone));
+}
+export function comparableMonthEnd(reference: Date, timeZone: string): Date {
+  const wall = new Date(reference.getTime() + zoneOffsetMs(reference.getTime(), timeZone));
+  const lastDay = new Date(Date.UTC(wall.getUTCFullYear(), wall.getUTCMonth(), 0)).getUTCDate();
+  const stamp = Date.UTC(wall.getUTCFullYear(), wall.getUTCMonth() - 1, Math.min(wall.getUTCDate(), lastDay), wall.getUTCHours(), wall.getUTCMinutes(), wall.getUTCSeconds(), wall.getUTCMilliseconds());
+  return new Date(stamp - zoneOffsetMs(stamp - zoneOffsetMs(stamp, timeZone), timeZone));
+}
+
+export function endOfDayInZone(value: string, timeZone: string): Date {
+  const current = new Date(`${value}T00:00:00Z`);
+  if (!Number.isFinite(startOfDayInZone(value,timeZone).getTime())) return new Date(NaN);
+  current.setUTCDate(current.getUTCDate()+1);
+  return new Date(startOfDayInZone(current.toISOString().slice(0,10),timeZone).getTime()-1);
+}

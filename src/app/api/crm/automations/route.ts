@@ -1,3 +1,5 @@
+import { executableAutomationSchema } from "@/lib/automation-config";
+import { ValidationError } from "@/lib/errors";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requirePermission } from "@/lib/auth";
@@ -42,6 +44,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const session = await requirePermission(request, "crm", "write");
     const body = await request.json();
     const input = createAutomationTriggerSchema.parse(body);
+
+    if (input.isActive !== false && !executableAutomationSchema.safeParse(input).success) throw new ValidationError("Esta regra não possui executor configurado. Salve como inativa ou escolha uma ação interna compatível.");
 
     const trigger = await prisma.automationTrigger.create({
       data: input as Prisma.AutomationTriggerCreateInput,

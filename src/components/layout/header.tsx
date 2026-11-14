@@ -1,10 +1,12 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { ThemeToggle } from "@/components/ui/theme-toggle";
+import { GlobalSearch } from "./global-search";
+import { useSessionUser } from "./session-context";
+import { useRouter, usePathname } from "next/navigation";
 import {
   Bell,
-  Search,
   User,
   CalendarDays,
   Menu,
@@ -47,12 +49,6 @@ interface HeaderProps {
   onOpenMobileMenu?: () => void;
 }
 
-function getGreeting(): string {
-  const hour = new Date().getHours();
-  if (hour < 12) return "Bom dia";
-  if (hour < 18) return "Boa tarde";
-  return "Boa noite";
-}
 
 function formatToday(): string {
   return new Date().toLocaleDateString("pt-BR", {
@@ -65,6 +61,9 @@ function formatToday(): string {
 
 export function Header({ userName, role, onOpenMobileMenu }: HeaderProps): React.JSX.Element {
   const router = useRouter();
+  const pathname = usePathname();
+  const user = useSessionUser();
+  const section = ({ catalogo: "Catálogo", estoque: "Estoque", vendas: "Vendas", financeiro: "Financeiro", clientes: "Clientes", compras: "Compras", configuracoes: "Configurações", crm: "Relacionamento", relatorios: "Relatórios", logistica: "Logística", "notas-fiscais": "Entradas" } as Record<string, string>)[pathname.split("/")[2]] ?? "Visão geral";
   const [mounted, setMounted] = useState(false);
   // Quem aprova desconto no PDV recebe as solicitações pendentes.
   const isAdmin = can(role, "orders", "manage");
@@ -95,6 +94,7 @@ export function Header({ userName, role, onOpenMobileMenu }: HeaderProps): React
     if (!isAdmin || !REQUIRE_DISCOUNT_APPROVAL) return;
     let cancelled = false;
     async function poll(): Promise<void> {
+      if (document.hidden) return;
       try {
         const r = await fetch("/api/sales/discount-requests?status=PENDING&limit=5", {
           credentials: "include",
@@ -125,38 +125,31 @@ export function Header({ userName, role, onOpenMobileMenu }: HeaderProps): React
 
   return (
     <header className="sticky top-0 z-30 border-b border-gray-200/50 bg-white/70 backdrop-blur-lg print:hidden">
-      <div className="flex h-16 items-center justify-between px-3 sm:h-20 sm:px-6 md:px-8">
+      <div className="flex h-16 items-center justify-between px-3 sm:h-[72px] sm:px-6 md:px-8">
         {/* Left — Hamburguer (mobile) + Greeting */}
         <div className="flex min-w-0 items-center gap-2 sm:gap-3">
           <button
             type="button"
             onClick={onOpenMobileMenu}
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gray-100/80 text-gray-600 transition hover:bg-white hover:text-brand-600 hover:shadow-sm md:hidden"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gray-100/80 text-gray-600 transition hover:bg-white hover:text-brand-600 hover:shadow-sm lg:hidden"
             aria-label="Abrir menu"
           >
             <Menu className="h-5 w-5" />
           </button>
           <div className="flex min-w-0 flex-col">
             <h2 className="truncate text-[14px] font-bold tracking-tight text-gray-900 sm:text-[16px] sm:h-6">
-              {mounted ? `${getGreeting()}, ${userName} 👋` : ""}
+              {section}
             </h2>
             <div className="mt-0.5 hidden items-center gap-1.5 text-[12.5px] font-medium text-gray-500 sm:flex sm:h-5">
               <CalendarDays className="h-3.5 w-3.5 text-brand-500" />
-              <span className="capitalize">{mounted ? formatToday() : "Carregando data..."}</span>
+              <span className="capitalize">{user.locationName ?? "DonnaTicy"} · {mounted ? formatToday() : "Gestão da operação"}</span>
             </div>
           </div>
         </div>
 
         {/* Right — Search + Actions */}
-        <div className="flex shrink-0 items-center gap-2 sm:gap-4">
-          <div className="relative hidden lg:block">
-            <Search className="absolute left-3.5 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Buscar no sistema..."
-              className="w-72 rounded-xl border-0 bg-gray-100/80 py-2.5 pl-10 pr-4 text-[13.5px] font-medium text-gray-700 outline-none transition-all placeholder:text-gray-400 focus:bg-white focus:ring-2 focus:ring-brand-500/30 focus:shadow-sm"
-            />
-          </div>
+        <div className="flex shrink-0 items-center gap-1 sm:gap-4">
+          <GlobalSearch />
 
           <div className="relative" ref={notifRef}>
             <button
@@ -175,13 +168,11 @@ export function Header({ userName, role, onOpenMobileMenu }: HeaderProps): React
                 <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white ring-2 ring-white">
                   {notifCount > 9 ? "9+" : notifCount}
                 </span>
-              ) : (
-                <span className="absolute right-2 top-2 h-2.5 w-2.5 rounded-full bg-brand-500 ring-2 ring-white" />
-              )}
+              ) : null}
             </button>
 
             {hasNotifPanel && notifOpen ? (
-              <div className="absolute right-0 top-12 z-50 w-80 overflow-hidden rounded-2xl border border-gray-200/80 bg-white shadow-xl">
+              <div className="absolute right-0 top-12 z-50 w-[min(320px,calc(100vw-24px))] overflow-hidden rounded-2xl border border-gray-200/80 bg-white shadow-xl">
                 <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
                   <span className="text-[13px] font-bold text-gray-900">Notificações</span>
                   {notifCount > 0 && (
@@ -257,6 +248,8 @@ export function Header({ userName, role, onOpenMobileMenu }: HeaderProps): React
 
           <button
             type="button"
+            aria-label="Minha conta"
+            onClick={() => router.push("/dashboard/configuracoes/conta")}
             className="flex items-center gap-2 rounded-xl border border-transparent p-1.5 transition-all hover:bg-gray-50 hover:border-gray-100 sm:gap-3 sm:pr-3"
           >
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-linear-to-br from-brand-500 to-brand-700 shadow-sm shadow-brand-500/20">
@@ -264,6 +257,7 @@ export function Header({ userName, role, onOpenMobileMenu }: HeaderProps): React
             </div>
             <span className="hidden text-[13.5px] font-semibold text-gray-700 sm:block">{userName}</span>
           </button>
+          <ThemeToggle />
         </div>
       </div>
     </header>

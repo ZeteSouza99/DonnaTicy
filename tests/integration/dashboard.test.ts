@@ -64,13 +64,13 @@ async function kpisAt(now: string) {
 }
 
 describe("KPIs do dashboard", () => {
-  it("compara com o mês anterior inteiro, incluindo as vendas do último dia", async () => {
+  it("compara períodos equivalentes e não inclui dias futuros do mês anterior", async () => {
     await deliveredOrder(100, "2026-10-31T23:00:00Z"); // 31/10 às 19:00 em Manaus
     await deliveredOrder(150, "2026-11-15T16:00:00Z");
 
     const result = await kpisAt("2026-11-15T16:00:00Z");
     expect(result.faturamentoMes).toBe(150);
-    expect(result.crescimentoVsMesAnterior).toBe(50);
+    expect(result.crescimentoVsMesAnterior).toBeNull();
   });
 
   it("vira o mês no horário da loja, e não no UTC do servidor", async () => {

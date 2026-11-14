@@ -19,7 +19,7 @@
     "stock:purge": "tsx scripts/purge-stock.ts",
     "catalog:barcodes": "tsx scripts/backfill-barcodes.ts",
     "test": "vitest run",
-    "test:integration": "tsx scripts/test-integration.ts",
+    "test:integration": "node --require ./scripts/windows-test-compat.cjs scripts/test-integration.ts",
     "test:all": "npm test && npm run test:integration",
     "test:watch": "vitest",
     "users:admins": "tsx scripts/ensure-admins.ts",

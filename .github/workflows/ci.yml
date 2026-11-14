@@ -45,3 +45,4 @@ jobs:
           # Valores fictícios: o build não acessa o banco, mas as libs exigem as variáveis.
           DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
           JWT_SECRET: ci-secret-com-no-minimo-32-caracteres-ok
+          CRON_SECRET: ci-maintenance-secret-at-least-32-characters

@@ -1,3 +1,4 @@
+import { allocateCents } from "@/lib/allocations";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { ValidationError, ConflictError, ForbiddenError } from "@/lib/errors";
@@ -289,6 +290,12 @@ export async function createOrder(
 
   const total = fromCents(totalAfterDiscountsCents - storeCreditUsedCents);
 
+  const netItems = allocateCents(toCents(total), orderItems.map((item) => toCents(item.unitPrice) * item.quantity));
+  orderItems.forEach((item, index) => {
+    item.discount = fromCents(toCents(item.unitPrice) * item.quantity - netItems[index]);
+    item.totalPrice = fromCents(netItems[index]);
+  });
+
   // Validate payments cover the total
   const paymentSum = fromCents(input.payments.reduce((sum, p) => sum + toCents(p.amount), 0));
   if (!paymentsCoverTotal(paymentSum, total)) {
@@ -340,10 +347,12 @@ export async function createOrder(
     },
     include: {
       customer: { select: { id: true, fullName: true } },
+      seller: { select: { name: true } },
+      usedStoreCredit: { select: { code: true } },
       items: {
         include: {
           variant: {
-            select: { sku: true, color: { select: { name: true } }, size: { select: { name: true } } },
+            select: { sku: true, product: { select: { name: true } }, color: { select: { name: true } }, size: { select: { name: true } } },
           },
         },
       },
@@ -412,5 +421,5 @@ export async function createOrder(
     channel: input.channel,
   });
 
-  return created;
+  return { ...created, couponCode: coupon?.code, couponDiscount: fromCents(couponDiscountCents) };
 }

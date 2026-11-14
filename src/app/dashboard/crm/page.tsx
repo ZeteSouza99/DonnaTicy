@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { Star, Gift, TrendingUp } from "lucide-react";
 import { clientFetch } from "@/lib/client-fetch";
 import { LoadingSpinner, EmptyState, ErrorMessage } from "@/components/ui/feedback";
+import { AutomationPanel } from "@/components/crm/automation-panel";
 import { DataTable } from "@/components/ui/data-table";
 
 interface LoyaltyTransaction {
@@ -18,6 +19,8 @@ interface LoyaltyTransaction {
 interface LoyaltyResponse {
   data: LoyaltyTransaction[];
   total: number;
+  pointsIssued: number;
+  pointsRedeemed: number;
 }
 
 const TIER_COLORS: Record<string, string> = {
@@ -62,9 +65,9 @@ export default function CrmPage(): React.ReactNode {
       key: "type",
       label: "Tipo",
       render: (t: LoyaltyTransaction) => (
-        <span className={`inline-flex items-center gap-1 text-xs font-semibold ${t.type === "EARN" ? "text-green-700" : "text-red-700"}`}>
-          {t.type === "EARN" ? <TrendingUp size={14} /> : <Gift size={14} />}
-          {t.type === "EARN" ? "Acúmulo" : "Resgate"}
+        <span className={`inline-flex items-center gap-1 text-xs font-semibold ${t.points > 0 ? "text-green-700" : "text-red-700"}`}>
+          {t.points > 0 ? <TrendingUp size={14} /> : <Gift size={14} />}
+          {({ EARN: "Acúmulo", REDEEM: "Resgate", BONUS: "Bônus", ADJUST: "Ajuste", EXPIRE: "Expiração" } as Record<string,string>)[t.type] ?? t.type}
         </span>
       ),
     },
@@ -72,8 +75,8 @@ export default function CrmPage(): React.ReactNode {
       key: "points",
       label: "Pontos",
       render: (t: LoyaltyTransaction) => (
-        <span className={t.type === "EARN" ? "text-green-700 font-semibold" : "text-red-700 font-semibold"}>
-          {t.type === "EARN" ? "+" : "-"}{t.points}
+        <span className={t.points > 0 ? "text-green-700 font-semibold" : "text-red-700 font-semibold"}>
+          {t.points > 0 ? "+" : ""}{t.points}
         </span>
       ),
     },
@@ -90,6 +93,8 @@ export default function CrmPage(): React.ReactNode {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900">CRM / Fidelidade</h1>
       </div>
+
+      <AutomationPanel/>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <div className="flex items-center gap-3 rounded-lg border bg-white p-4">
@@ -108,7 +113,7 @@ export default function CrmPage(): React.ReactNode {
           <div>
             <p className="text-xs text-gray-500">Pontos Emitidos</p>
             <p className="text-xl font-bold text-green-700">
-              {transactions?.data.filter((t) => t.type === "EARN").reduce((sum, t) => sum + t.points, 0).toLocaleString("pt-BR") ?? "—"}
+              {transactions?.pointsIssued.toLocaleString("pt-BR") ?? "—"}
             </p>
           </div>
         </div>
@@ -117,9 +122,9 @@ export default function CrmPage(): React.ReactNode {
             <Gift size={20} className="text-red-600" />
           </div>
           <div>
-            <p className="text-xs text-gray-500">Pontos Resgatados</p>
+            <p className="text-xs text-gray-500">Pontos Descontados</p>
             <p className="text-xl font-bold text-red-700">
-              {transactions?.data.filter((t) => t.type === "REDEEM").reduce((sum, t) => sum + t.points, 0).toLocaleString("pt-BR") ?? "—"}
+              {transactions?.pointsRedeemed.toLocaleString("pt-BR") ?? "—"}
             </p>
           </div>
         </div>

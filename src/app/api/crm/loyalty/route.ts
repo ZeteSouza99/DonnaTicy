@@ -24,7 +24,12 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       take: 50,
     });
 
-    return NextResponse.json({ data: transactions });
+    const [total, issued, redeemed] = await Promise.all([
+      prisma.loyaltyTransaction.count({ where }),
+      prisma.loyaltyTransaction.aggregate({ where: { ...where, points: { gt: 0 } }, _sum: { points: true } }),
+      prisma.loyaltyTransaction.aggregate({ where: { ...where, points: { lt: 0 } }, _sum: { points: true } }),
+    ]);
+    return NextResponse.json({ data: transactions, total, pointsIssued: issued._sum.points ?? 0, pointsRedeemed: Math.abs(redeemed._sum.points ?? 0) });
   } catch (error) {
     return handleApiError(error);
   }

@@ -149,7 +149,7 @@ export default function MovimentarEstoquePage(): React.ReactNode {
             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" />
         </div>
 
-        <div className="flex justify-end gap-3 pt-4">
+        <div className="form-actions flex flex-wrap justify-end gap-3 pt-4">
           <button type="button" onClick={() => router.back()}
             className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
             Cancelar

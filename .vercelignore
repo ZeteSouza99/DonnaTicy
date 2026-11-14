@@ -12,7 +12,10 @@ VERCEL_ENV.txt
 *.bak
 
 # Serviço local de impressão (roda no PC da loja, não na Vercel).
-print-service
+print-service/*
+# O layout puro também é usado na impressão HTML do navegador.
+!print-service/receipt-layout.js
+!print-service/receipt-layout.d.ts
 
 # Dependências, caches e logs são recriados no ambiente de build.
 node_modules

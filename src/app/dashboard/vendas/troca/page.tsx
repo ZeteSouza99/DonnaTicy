@@ -18,6 +18,9 @@ import {
   QrCode,
 } from "lucide-react";
 import { clientFetch } from "@/lib/client-fetch";
+import { useCheckoutOperation } from "@/hooks/use-checkout-operation";
+import { useSessionUser } from "@/components/layout/session-context";
+import { partialItemCents } from "@/lib/allocations";
 import { useDebounce } from "@/hooks/use-debounce";
 
 // ----------------------------------------------------------------------------
@@ -41,6 +44,9 @@ interface OrderSummary {
 }
 
 interface OrderItemDetail {
+  returnableQty: number;
+  returnedQty: number;
+  netReturnCents: number;
   id: string;
   variantId: string;
   quantity: number;
@@ -123,6 +129,8 @@ function num(v: number | string | null | undefined): number {
 // ============================================================================
 
 export default function TrocaPage(): React.ReactNode {
+  const session = useSessionUser();
+  const operation = useCheckoutOperation(session.id, "exchanges");
   const router = useRouter();
 
   // -------- Local de estoque --------
@@ -248,6 +256,7 @@ export default function TrocaPage(): React.ReactNode {
 
   // -------- Itens devolvidos --------
   function toggleReturn(item: OrderItemDetail): void {
+    if (!item.returnableQty) return;
     setReturnedQty((prev) => {
       const next = { ...prev };
       if (next[item.id]) delete next[item.id];
@@ -257,9 +266,10 @@ export default function TrocaPage(): React.ReactNode {
   }
 
   function changeReturnQty(item: OrderItemDetail, delta: number): void {
+    if (!item.returnableQty) return;
     setReturnedQty((prev) => {
       const current = prev[item.id] ?? 0;
-      const next = Math.max(1, Math.min(item.quantity, current + delta));
+      const next = Math.max(1, Math.min(item.returnableQty, current + delta));
       return { ...prev, [item.id]: next };
     });
   }
@@ -329,7 +339,7 @@ export default function TrocaPage(): React.ReactNode {
     return order.items.reduce((sum, item) => {
       const qty = returnedQty[item.id] ?? 0;
       if (!qty) return sum;
-      return sum + (num(item.totalPrice) / item.quantity) * qty;
+      return sum + partialItemCents(item.netReturnCents, item.quantity, item.returnedQty, qty) / 100;
     }, 0);
   }, [order, returnedQty]);
 
@@ -355,9 +365,7 @@ export default function TrocaPage(): React.ReactNode {
     setIsSubmitting(true);
     setError(null);
     try {
-      const created = await clientFetch<ExchangeResult>("/api/sales/exchanges", {
-        method: "POST",
-        body: {
+      const created = await operation.submit<ExchangeResult>({
           orderId: order.id,
           locationId,
           returnedItems: Object.entries(returnedQty).map(([orderItemId, quantity]) => ({
@@ -366,7 +374,6 @@ export default function TrocaPage(): React.ReactNode {
           })),
           newItems: newItems.map((i) => ({ variantId: i.variantId, quantity: i.quantity })),
           paymentMethod: settlement === "CHARGED" ? paymentMethod : undefined,
-        },
       });
       setResult(created);
     } catch (e) {
@@ -427,6 +434,8 @@ export default function TrocaPage(): React.ReactNode {
       </div>
     );
   }
+
+  if (operation.pending) return <div className="panel mx-auto max-w-lg space-y-4"><h1>Verificar troca</h1><p className="text-sm text-gray-600">A tentativa salva será consultada antes de criar outra troca.</p>{error && <p role="alert" className="text-sm text-red-700">{error}</p>}<button className="btn-primary" disabled={isSubmitting} onClick={async()=>{setIsSubmitting(true);setError(null);try{setResult(await operation.submit<ExchangeResult>());}catch(e){setError(e instanceof Error?e.message:"Falha ao verificar.");}finally{setIsSubmitting(false);}}}>{isSubmitting?"Aguarde":"Verificar e concluir troca"}</button></div>;
 
   return (
     <div className="mx-auto max-w-6xl px-3 py-4 sm:px-4">
@@ -531,7 +540,7 @@ export default function TrocaPage(): React.ReactNode {
               {order.items.map((item) => {
                 const qty = returnedQty[item.id] ?? 0;
                 const selected = qty > 0;
-                const unitValue = num(item.totalPrice) / item.quantity;
+                const unitValue = item.netReturnCents / 100 / item.quantity;
                 return (
                   <li
                     key={item.id}

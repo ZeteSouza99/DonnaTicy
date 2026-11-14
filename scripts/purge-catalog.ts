@@ -1,4 +1,3 @@
-/* eslint-disable no-console */
 /**
  * Zera o catálogo e todo o movimento vinculado a ele:
  * produtos, variantes, estoque, notas de entrada e pedidos de venda.

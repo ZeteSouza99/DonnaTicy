@@ -31,7 +31,7 @@ export default async function DashboardLayout({
   }
 
   return (
-    <DashboardShell user={{ name: user.name, role: session.role }}>
+    <DashboardShell user={{ id: session.sub, name: user.name, role: session.role, locationId: session.locationId, locationName: user.location?.name ?? null }}>
       {children}
     </DashboardShell>
   );

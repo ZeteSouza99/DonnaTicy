@@ -5,6 +5,10 @@ import { handleApiError, NotFoundError, ValidationError, ConflictError } from "@
 import { updateReturnStatusSchema } from "@/schemas/logistics";
 import { createAuditLogTx, getClientIp } from "@/lib/audit";
 import { sameValue } from "@/lib/decimal";
+import { getReturnBalances } from "@/services/return-balance-service";
+import { partialItemCents } from "@/lib/allocations";
+import { toCents, fromCents } from "@/lib/money";
+import { generateCode } from "@/lib/code-generator";
 import { lockOrder } from "@/services/order-lock";
 import { lockStockPositions } from "@/services/stock-lock";
 
@@ -70,16 +74,30 @@ export async function PATCH(request: NextRequest, { params }: RouteParams): Prom
         throw new ConflictError("Devolução com vínculo de cliente/item inconsistente.");
       }
 
-      const returnedItemsValue = existing.items.reduce((sum, item) => {
-        const unitPaid = item.orderItem.quantity > 0 ? Number(item.orderItem.totalPrice) / item.orderItem.quantity : 0;
-        return sum + unitPaid * item.quantity;
-      }, 0);
-      const refundAmount = Number(input.refundAmount ?? existing.refundAmount ?? 0);
-      const storeCreditAmount = Number(input.storeCreditAmount ?? existing.storeCreditAmount ?? 0);
-      if (refundAmount + storeCreditAmount > returnedItemsValue + 0.01) {
-        throw new ValidationError("Reembolso + crédito excede o valor dos itens devolvidos.");
+      if (existing.status === "REJECTED" && input.status !== "REJECTED") throw new ConflictError("Devolução rejeitada não pode ser reaberta. Crie uma nova solicitação.");
+      if (order.channel !== "STORE" && order.status === "PAID") throw new ConflictError("Pedido ainda reservado, sem saída física. Cancele o pedido ou conclua a separação antes de registrar a devolução.");
+      const balances = await getReturnBalances(tx, order.id, id);
+      let returnedCents = 0;
+      for (const item of existing.items) {
+        const balance = balances.get(item.orderItemId);
+        if (!balance || item.quantity > balance.remaining) throw new ConflictError("Saldo de devolução insuficiente. Confira as outras trocas e devoluções.");
+        returnedCents += partialItemCents(balance.netCents, balance.quantity, balance.settled, item.quantity);
+      }
+      const refundCents = toCents(input.refundAmount ?? existing.refundAmount ?? 0);
+      const creditCents = toCents(input.storeCreditAmount ?? existing.storeCreditAmount ?? 0);
+      if (refundCents + creditCents > returnedCents) throw new ValidationError("Reembolso + crédito excede o valor líquido dos itens devolvidos.");
+      if (input.status === "RESOLVED") {
+        if (!(input.inspectionResult ?? existing.inspectionResult)) throw new ValidationError("Informe o resultado da inspeção antes de concluir.");
+        if ((input.resolution ?? existing.resolution) === "EXCHANGE_SENT") throw new ValidationError("Registre a troca no PDV para movimentar as peças substitutas.");
+        if (creditCents > 0) {
+          const customer = await tx.customer.findUniqueOrThrow({ where: { id: order.customerId } });
+          if (customer.phone === "00000000000") throw new ValidationError("Identifique o cliente antes de emitir o vale-troca.");
+        }
       }
 
+      const settingsRow = await tx.setting.findUnique({ where: { key: "operational" } });
+      const validity = Number((settingsRow?.value as { storeCreditValidityDays?: number } | null)?.storeCreditValidityDays ?? 0);
+      const creditExpiresAt = validity > 0 ? new Date(Date.now() + validity * 86400000) : null;
       const now = new Date();
       const data: Record<string, unknown> = { status: input.status };
       if (input.inspectionResult) data.inspectionResult = input.inspectionResult;
@@ -97,6 +115,14 @@ export async function PATCH(request: NextRequest, { params }: RouteParams): Prom
       const updated = await tx.returnRequest.update({ where: { id }, data });
 
       if (input.status === "RESOLVED") {
+        if (creditCents > 0) {
+          await tx.storeCredit.create({ data: {
+            code: generateCode("VLT"), customerId: order.customerId,
+            amount: fromCents(creditCents), remainingAmount: fromCents(creditCents),
+            expiresAt: creditExpiresAt,
+            originOrderId: order.id, returnRequestId: id,
+          } });
+        }
         // Reentrada de estoque para itens revendáveis
         const restockLocationId = order.locationId;
         if (restockLocationId) {

@@ -1,52 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requirePermission } from "@/lib/auth";
-import { handleApiError } from "@/lib/errors";
-import { parseSpreadsheet } from "@/lib/import/spreadsheet-parser";
-import { executeImport } from "@/lib/import/run-import";
-
+import { handleApiError, ValidationError } from "@/lib/errors";
+import { createImportJob, listImportJobs } from "@/services/import-job-service";
 export const runtime = "nodejs";
-export const maxDuration = 300;
-
-export async function POST(request: NextRequest): Promise<NextResponse> {
-  try {
-    await requirePermission(request, "imports", "write");
-
-    const formData = await request.formData();
-    const file = formData.get("file");
-    const dryRun = formData.get("dryRun") === "true";
-
-    if (!file || !(file instanceof File)) {
-      return NextResponse.json({ error: "Arquivo .xlsx é obrigatório (campo 'file')." }, { status: 400 });
-    }
-
-    const arrayBuffer = await file.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-
-    const parsed = parseSpreadsheet(buffer);
-
-    if (parsed.errors.length > 0 && parsed.rows.length === 0) {
-      return NextResponse.json(
-        {
-          ok: false,
-          message: "Erros impeditivos no arquivo.",
-          parseErrors: parsed.errors,
-          totalRows: parsed.totalRows,
-        },
-        { status: 422 }
-      );
-    }
-
-    const summary = await executeImport(parsed.rows, dryRun);
-
-    return NextResponse.json({
-      ok: true,
-      dryRun,
-      totalRows: parsed.totalRows,
-      validRows: parsed.rows.length,
-      parseErrors: parsed.errors,
-      summary,
-    });
-  } catch (error) {
-    return handleApiError(error);
-  }
+export async function GET(request: NextRequest) {
+ try { const session = await requirePermission(request,"imports","read"); return NextResponse.json({ data: await listImportJobs(session.sub) }); } catch(error) { return handleApiError(error,request); }
+}
+export async function POST(request: NextRequest) {
+ try {
+  const session = await requirePermission(request,"imports","write");
+  const data = await request.formData(), file = data.get("file");
+  if(!(file instanceof File)) throw new ValidationError("Selecione a planilha .xlsx.");
+  return NextResponse.json(await createImportJob(session.sub,file,data.get("dryRun") === "true"), { status: 202 });
+ } catch(error) { return handleApiError(error,request); }
 }

@@ -1,3 +1,5 @@
+import { ValidationError } from "@/lib/errors";
+import type { Prisma, PrismaClient } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import type { ParsedRow } from "./spreadsheet-parser";
 
@@ -56,7 +58,7 @@ function hexFor(name: string): string {
 // Executor
 // ----------------------------------------------------------------------------
 
-export async function executeImport(rows: ParsedRow[], dryRun = false): Promise<ImportSummary> {
+export async function executeImport(rows: ParsedRow[], dryRun = false, db: Prisma.TransactionClient | PrismaClient = prisma, strict = false): Promise<ImportSummary> {
   const summary: ImportSummary = {
     invoicesProcessed: 0,
     invoicesCreated: 0,
@@ -73,13 +75,13 @@ export async function executeImport(rows: ParsedRow[], dryRun = false): Promise<
   if (rows.length === 0) return summary;
 
   // Localização padrão (estoque destino) — deve existir após reset
-  const location = await prisma.location.findFirst({ where: { code: "MATRIZ" } });
-  if (!location) throw new Error("Location 'MATRIZ' não encontrada. Rode `npm run db:reset` primeiro.");
+  const location = await db.location.findFirst({ where: { code: "MATRIZ", deletedAt: null, isActive: true } });
+  if (!location) throw new ValidationError("Cadastre um local ativo com código MATRIZ antes de importar.");
 
-  const collection = await prisma.collection.findFirst({ where: { code: "DEFAULT" } });
-  const line = await prisma.line.findFirst({ where: { code: "DEFAULT" } });
+  const collection = await db.collection.findFirst({ where: { code: "DEFAULT", deletedAt: null } });
+  const line = await db.line.findFirst({ where: { code: "DEFAULT", deletedAt: null } });
   if (!collection || !line) {
-    throw new Error("Collection/Line 'DEFAULT' não encontrada. Rode `npm run db:reset` primeiro.");
+    throw new ValidationError("Cadastre coleção e linha com código DEFAULT antes de importar.");
   }
 
   const invoicesSeen = new Set<string>();
@@ -98,7 +100,7 @@ export async function executeImport(rows: ParsedRow[], dryRun = false): Promise<
       if (dryRun) {
         invoicesSeen.add(row.invoiceNumber);
         summary.totalUnits += row.quantity;
-        const variant = await prisma.productVariant.findUnique({ where: { sku: row.sku } });
+        const variant = await db.productVariant.findUnique({ where: { sku: row.sku } });
         if (variant) summary.variantsUpdated++;
         else summary.variantsCreated++;
         continue;
@@ -108,7 +110,8 @@ export async function executeImport(rows: ParsedRow[], dryRun = false): Promise<
       const catCode = slug(row.categoryName).toUpperCase().slice(0, 30) || "GERAL";
       let categoryId = categoryCache.get(catCode);
       if (!categoryId) {
-        const cat = await prisma.category.upsert({
+        const existingCategory = await db.category.findFirst({ where: { OR: [{ code: catCode }, { slug: slug(row.categoryName) || "geral" }] } });
+        const cat = existingCategory ?? await db.category.upsert({
           where: { code: catCode },
           create: { code: catCode, name: row.categoryName, slug: slug(row.categoryName) || "geral" },
           update: { name: row.categoryName },
@@ -121,7 +124,7 @@ export async function executeImport(rows: ParsedRow[], dryRun = false): Promise<
       const colorCode = slug(row.colorName).toUpperCase().slice(0, 30) || "INDEFINIDO";
       let colorId = colorCache.get(colorCode);
       if (!colorId) {
-        const col = await prisma.color.upsert({
+        const col = await db.color.upsert({
           where: { code: colorCode },
           create: { code: colorCode, name: row.colorName, hexValue: hexFor(row.colorName) },
           update: { name: row.colorName },
@@ -134,7 +137,7 @@ export async function executeImport(rows: ParsedRow[], dryRun = false): Promise<
       const sizeCode = row.sizeName.toUpperCase().slice(0, 10);
       let sizeId = sizeCache.get(sizeCode);
       if (!sizeId) {
-        const sz = await prisma.size.upsert({
+        const sz = await db.size.upsert({
           where: { code: sizeCode },
           create: {
             code: sizeCode,
@@ -151,12 +154,12 @@ export async function executeImport(rows: ParsedRow[], dryRun = false): Promise<
       // ---------- 4. Fornecedor (cache) ----------
       let supplierId = supplierCache.get(row.supplierName);
       if (!supplierId) {
-        let supplier = await prisma.supplier.findFirst({
+        let supplier = await db.supplier.findFirst({
           where: { companyName: row.supplierName, deletedAt: null },
           select: { id: true },
         });
         if (!supplier) {
-          supplier = await prisma.supplier.create({
+          supplier = await db.supplier.create({
             data: {
               companyName: row.supplierName,
               cnpj: pseudoCnpjFromName(row.supplierName),
@@ -186,13 +189,13 @@ export async function executeImport(rows: ParsedRow[], dryRun = false): Promise<
         basePrice: row.commercialValue,
         markup: row.commercialValue > 0 && row.realCost > 0 ? row.commercialValue / row.realCost : 1,
       };
-      const existingProduct = await prisma.product.findUnique({ where: { code: productCode } });
+      const existingProduct = await db.product.findUnique({ where: { code: productCode } });
       const product = existingProduct
-        ? await prisma.product.update({
+        ? await db.product.update({
             where: { code: productCode },
             data: { ...productData, updatedAt: new Date() },
           })
-        : await prisma.product.create({ data: { code: productCode, ...productData } });
+        : await db.product.create({ data: { code: productCode, ...productData } });
       if (existingProduct) summary.productsUpdated++;
       else summary.productsCreated++;
 
@@ -205,20 +208,20 @@ export async function executeImport(rows: ParsedRow[], dryRun = false): Promise<
         additionalCost: 0,
         isActive: true,
       };
-      const existingVariant = await prisma.productVariant.findUnique({ where: { sku: row.sku } });
+      const existingVariant = await db.productVariant.findUnique({ where: { sku: row.sku } });
       const variant = existingVariant
-        ? await prisma.productVariant.update({
+        ? await db.productVariant.update({
             where: { sku: row.sku },
             data: { ...variantData, updatedAt: new Date() },
           })
-        : await prisma.productVariant.create({
+        : await db.productVariant.create({
             data: { sku: row.sku, ...variantData },
           });
       if (existingVariant) summary.variantsUpdated++;
       else summary.variantsCreated++;
 
       // ---------- 7. Estoque (incrementa) ----------
-      await prisma.stockPosition.upsert({
+      await db.stockPosition.upsert({
         where: { variantId_locationId: { variantId: variant.id, locationId: location.id } },
         create: {
           variantId: variant.id,
@@ -229,7 +232,7 @@ export async function executeImport(rows: ParsedRow[], dryRun = false): Promise<
       });
 
       // ---------- 8. Movimento ----------
-      await prisma.stockMovement.create({
+      await db.stockMovement.create({
         data: {
           variantId: variant.id,
           toLocationId: location.id,
@@ -245,12 +248,12 @@ export async function executeImport(rows: ParsedRow[], dryRun = false): Promise<
       const invoiceCacheKey = `${row.invoiceNumber}::${row.supplierName}`;
       let invoiceId = invoiceCache.get(invoiceCacheKey);
       if (!invoiceId) {
-        const existingInvoice = await prisma.invoice.findUnique({
+        const existingInvoice = await db.invoice.findUnique({
           where: { number_supplierName: { number: row.invoiceNumber, supplierName: row.supplierName } },
           select: { id: true },
         });
         const invoice = existingInvoice
-          ? await prisma.invoice.update({
+          ? await db.invoice.update({
               where: { id: existingInvoice.id },
               data: {
                 issueDate: row.invoiceDate,
@@ -262,7 +265,7 @@ export async function executeImport(rows: ParsedRow[], dryRun = false): Promise<
               },
               select: { id: true },
             })
-          : await prisma.invoice.create({
+          : await db.invoice.create({
               data: {
                 number: row.invoiceNumber,
                 supplierName: row.supplierName,
@@ -281,13 +284,13 @@ export async function executeImport(rows: ParsedRow[], dryRun = false): Promise<
         else summary.invoicesUpdated++;
         // Idempotência: limpa itens antigos da NF antes de recriar
         if (existingInvoice && !invoicesCleared.has(invoiceId)) {
-          await prisma.invoiceItem.deleteMany({ where: { invoiceId } });
+          await db.invoiceItem.deleteMany({ where: { invoiceId } });
           invoicesCleared.add(invoiceId);
         }
       }
 
       // ---------- 10. Item da Nota Fiscal ----------
-      await prisma.invoiceItem.create({
+      await db.invoiceItem.create({
         data: {
           invoiceId,
           variantId: variant.id,
@@ -317,6 +320,7 @@ export async function executeImport(rows: ParsedRow[], dryRun = false): Promise<
       summary.totalUnits += row.quantity;
       summary.stockEntered++;
     } catch (e) {
+      if (strict) throw e;
       summary.errors.push({
         line: idx + 2, // +2 por causa do header e zero-based
         sku: row.sku,
