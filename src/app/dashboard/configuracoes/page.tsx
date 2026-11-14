@@ -1,9 +1,15 @@
 "use client";
 
-import { Settings as SettingsIcon, Users, Store, Database, Tags, Palette, Ruler, Layers, Shirt, KeyRound } from "lucide-react";
+import { Settings as SettingsIcon, Users, Store, Database, Tags, Palette, Ruler, Layers, Shirt, KeyRound, Printer } from "lucide-react";
 
 export default function ConfiguracoesPage(): React.ReactNode {
   const sections = [
+    {
+      icon: Printer,
+      title: "Impressão de recibos",
+      description: "Verificar a conexão com a impressora USB e imprimir uma amostra sem registrar venda.",
+      href: "/dashboard/configuracoes/impressao",
+    },
     {
       icon: KeyRound,
       title: "Minha Conta",

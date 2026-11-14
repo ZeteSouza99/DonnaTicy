@@ -101,6 +101,48 @@ function printHtml(html: string): void {
 
 // ===== API pública =====
 
+/** Diagnóstico explícito: não usa o cache nem envia trabalho à impressora. */
+export async function checkPrintService(): Promise<string> {
+  const response = await fetch(`${PRINT_SERVICE_URL}/status`, {
+    cache: "no-store",
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!response.ok) throw new Error("O serviço de impressão recusou a conexão.");
+  const result = await response.json();
+  if (result.status !== "online" || typeof result.printer !== "string") {
+    throw new Error("A resposta do serviço de impressão é inválida.");
+  }
+  serviceHealthCache = { online: true, checkedAt: Date.now() };
+  return result.printer;
+}
+
+/** Uma amostra local; não chama a API de pedidos, estoque ou pagamentos. */
+export async function printTestReceipt(): Promise<string> {
+  const printer = await checkPrintService();
+  const sample: SaleReceiptData = {
+    code: "TESTE-WEB-USB",
+    createdAt: new Date().toISOString(),
+    customerName: "TESTE - SEM VALOR COMERCIAL",
+    items: [{ name: "Peça de teste - impressão web", color: "Preto", size: "M", quantity: 1, unitPrice: 0, totalPrice: 0 }],
+    subtotal: 0, discountTotal: 0, total: 0, payments: [],
+  };
+  const response = await fetch(`${PRINT_SERVICE_URL}/print`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ type: "sale_receipt", data: sample, store: {
+      ...storeInfo(), storeTagline: "TESTE DE IMPRESSÃO WEB",
+      exchangePolicy: "Amostra de teste. Nenhuma venda foi registrada. Este código não é válido para troca.",
+      receiptFooter: "TESTE - SEM VALOR COMERCIAL",
+    } }),
+    signal: AbortSignal.timeout(15_000),
+  });
+  const result = await response.json();
+  if (!response.ok || result.success !== true) {
+    throw new Error(typeof result.error === "string" ? result.error : "O serviço não confirmou o envio à fila.");
+  }
+  return printer;
+}
+
 /** Imprime o comprovante: serviço local primeiro, fallback HTML. Nunca lança. */
 export async function printSaleReceipt(sale: SaleReceiptData): Promise<void> {
   const store = storeInfo();
