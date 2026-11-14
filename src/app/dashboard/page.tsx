@@ -39,7 +39,7 @@ export default function DashboardPage() {
   <div className="grid grid-cols-2 items-end gap-3 rounded-xl sm:flex sm:flex-wrap border border-gray-200 bg-white p-3">
    <label className="min-w-0 flex-1"><span className="field-label">De</span><input type="date" aria-label="Data inicial" className="field-input" value={from} onChange={(e) => setFrom(e.target.value)} /></label>
    <label className="min-w-0 flex-1"><span className="field-label">Até</span><input type="date" aria-label="Data final" className="field-input" value={to} onChange={(e) => setTo(e.target.value)} /></label>
-   {locations && <label className="min-w-0 flex-1"><span className="field-label">Local de estoque</span><select className="field-input" value={location} onChange={(e) => setLocation(e.target.value)}><option value="">Todos os locais</option>{locations.data.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}</select></label>}
+   {can(user.role, "inventory", "read") && <label className="min-w-0 flex-1"><span className="field-label">Local de estoque</span><select className="field-input" disabled={!locations} value={location} onChange={(e) => setLocation(e.target.value)}><option value="">Todos os locais</option>{locations?.data.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}</select></label>}
    <button className="btn-secondary" onClick={() => { setFrom(""); setTo(""); setLocation(""); }}>Este mês</button>
   </div>
   {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}

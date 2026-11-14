@@ -1,11 +1,13 @@
 
+import { LoaderCircle } from "lucide-react";
+
 export function LoadingSpinner(): React.JSX.Element {
   return (
-    <div role="status" aria-label="Carregando conteúdo" className="w-full space-y-5 py-4">
-      <span className="sr-only">Carregando conteúdo…</span>
-      <div className="skeleton h-7 w-48" />
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">{[0,1,2,3].map((i) => <div key={i} className="skeleton h-28" />)}</div>
-      <div className="panel space-y-4">{[0,1,2,3].map((i) => <div key={i} className="skeleton h-10" />)}</div>
+    <div data-loading="true" role="status" aria-label="Carregando conteúdo" className="content-loader">
+      <div className="content-loader-indicator">
+        <span aria-hidden="true" className="content-loader-icon text-brand-600"><LoaderCircle size={28} strokeWidth={1.75} /></span>
+        <p className="text-sm font-medium text-gray-500">Carregando...</p>
+      </div>
     </div>
   );
 }

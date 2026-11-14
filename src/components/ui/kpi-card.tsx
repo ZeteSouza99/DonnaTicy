@@ -53,7 +53,7 @@ export function KpiCard({
   const palette = colorMap[color];
 
   return (
-    <div className={`group relative overflow-hidden rounded-2xl bg-white p-6 shadow-[var(--shadow-premium)] transition-all duration-300 hover:-translate-y-1 hover:shadow-[var(--shadow-premium-hover)] border border-transparent ${palette.borderGlow}`}>
+    <div className={`group relative overflow-hidden rounded-2xl bg-white p-6 shadow-[var(--shadow-premium)] transition-[box-shadow,border-color] duration-200 hover:shadow-[var(--shadow-premium-hover)] border border-transparent ${palette.borderGlow}`}>
       {/* Background subtile glow for premium effect */}
       <div className={`absolute -right-6 -top-6 h-28 w-28 rounded-full blur-3xl opacity-20 transition-opacity duration-300 group-hover:opacity-40 ${palette.iconBg.replace('/10', '')}`} />
 
