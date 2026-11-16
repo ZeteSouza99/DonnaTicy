@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { Download, FileSpreadsheet, Loader2, Upload } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
@@ -51,6 +52,7 @@ export default function ImportarCatalogoPage() {
   const processing = busy || !!job && ["PENDING", "RUNNING"].includes(job.status);
   return <div className="mx-auto max-w-4xl space-y-6">
     <PageHeader title="Importar catálogo" description="Produtos e estoque por nota fiscal, com progresso salvo a cada nota." actions={<a href="/api/imports/template" className="btn-secondary"><Download size={16}/> Baixar modelo</a>}/>
+    <p className="text-sm text-gray-600">Recebeu a nota do fornecedor? <Link href="/dashboard/notas-fiscais/importar" className="font-medium text-brand-700 underline">Importar XML, PDF ou fotos da nota fiscal</Link></p>
     <section className="panel space-y-5 p-6">
       <div className="flex items-start gap-3"><FileSpreadsheet className="text-brand-600"/><div><h2 className="font-semibold">Envie sua planilha</h2><p className="mt-1 text-sm text-gray-500">Arquivo .xlsx de até 10 MB e 5.000 linhas. Valide antes de importar. Notas já importadas não geram uma segunda entrada.</p></div></div>
       <label className="block rounded-xl border border-dashed border-gray-300 bg-gray-50 p-6"><span className="field-label">Planilha de entrada</span><input type="file" accept=".xlsx" disabled={processing} onChange={e => {setFile(e.target.files?.[0] ?? null); setError(null);}} className="block w-full text-sm file:mr-4 file:rounded-lg file:border-0 file:bg-white file:px-4 file:py-3 file:font-medium"/></label>

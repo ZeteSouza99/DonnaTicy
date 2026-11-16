@@ -5,6 +5,7 @@ import { ConflictError, NotFoundError, ValidationError } from "@/lib/errors";
 import { parseSpreadsheet, type ParsedRow } from "@/lib/import/spreadsheet-parser";
 import { executeImport, type ImportSummary } from "@/lib/import/run-import";
 import { createAuditLogTx } from "@/lib/audit";
+import { findExistingReceipt } from "./invoice-receipt-service";
 
 const emptySummary: ImportSummary = { invoicesProcessed: 0, invoicesCreated: 0, invoicesUpdated: 0, productsCreated: 0, productsUpdated: 0, variantsCreated: 0, variantsUpdated: 0, stockEntered: 0, totalUnits: 0, errors: [] };
 const publicJob = { id: true, fileName: true, status: true, dryRun: true, total: true, processed: true, summary: true, parseErrors: true, error: true, createdAt: true, updatedAt: true } as const;
@@ -28,9 +29,9 @@ export async function createImportJob(userId: string, file: File, dryRun: boolea
     parseErrors: parsed.errors.map(({line,message}) => ({line,message})),
   }, select: publicJob });
 }
-export async function listImportJobs(userId: string) { return prisma.importJob.findMany({ where: { userId }, select: publicJob, orderBy: { createdAt: "desc" }, take: 20 }); }
+export async function listImportJobs(userId: string) { return prisma.importJob.findMany({ where: { userId, NOT: { fileHash: { startsWith: "document:" } } }, select: publicJob, orderBy: { createdAt: "desc" }, take: 20 }); }
 export async function getImportJob(id: string, userId: string) {
-  const job = await prisma.importJob.findFirst({ where: { id, userId }, select: publicJob });
+  const job = await prisma.importJob.findFirst({ where: { id, userId, NOT: { fileHash: { startsWith: "document:" } } }, select: publicJob });
   if(!job) throw new NotFoundError("Importação"); return job;
 }
 /** Uma nota por transação. Avanço e efeitos são confirmados juntos; reenvio não repete estoque. */
@@ -39,13 +40,15 @@ export async function advanceImportJob(id: string, userId: string, retry = false
     return await prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM import_jobs WHERE id = ${id} AND user_id = ${userId} FOR UPDATE`;
       const job = await tx.importJob.findFirst({ where: { id, userId } });
-      if(!job) throw new NotFoundError("Importação");
+      if(!job || job.fileHash.startsWith("document:")) throw new NotFoundError("Importação");
       if(job.status === "COMPLETED" || (job.status === "FAILED" && !retry)) return tx.importJob.findUniqueOrThrow({ where: { id }, select: publicJob });
       const rows = (job.rows as unknown as ParsedRow[]).map((r) => ({...r, invoiceDate: new Date(r.invoiceDate)}));
       const pending = rows.slice(job.processed);
       const key = invoiceKey(pending[0]);
       const batch = pending.filter((row) => invoiceKey(row) === key);
       if(!job.dryRun) {
+        await tx.$queryRaw`SELECT 1 FROM pg_advisory_xact_lock(hashtextextended('invoice-receipts',0))`;
+        if(await findExistingReceipt(tx,batch[0].invoiceNumber,batch[0].supplierName)) throw new ConflictError(`A nota ${batch[0].invoiceNumber} já foi importada. Nenhum estoque foi alterado.`);
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`invoice:${key}`},0))`;
         const existing = await tx.invoice.findUnique({ where: { number_supplierName: { number: batch[0].invoiceNumber, supplierName: batch[0].supplierName } }, include: { _count: { select: { items: true } } } });
         if(existing && existing._count.items > 0) throw new ConflictError(`A nota ${batch[0].invoiceNumber} já possui itens importados. Nenhum estoque deste grupo foi alterado.`);

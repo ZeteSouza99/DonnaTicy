@@ -142,13 +142,16 @@ export default function EntradasMercadoriaPage(): React.ReactNode {
             Custo de mercadoria por entrada: valor de custo + frete
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => setShowForm(true)}
-          className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-700"
-        >
-          <Plus className="h-4 w-4" /> Nova entrada
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <Link href="/dashboard/notas-fiscais/importar" className="btn-secondary">Importar nota fiscal</Link>
+          <button
+            type="button"
+            onClick={() => setShowForm(true)}
+            className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-700"
+          >
+            <Plus className="h-4 w-4" /> Nova entrada
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">

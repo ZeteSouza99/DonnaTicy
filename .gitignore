@@ -70,3 +70,4 @@ cookies.txt
 /.vscode/
 
 .next-preview/
+/public/vendor/invoice/
