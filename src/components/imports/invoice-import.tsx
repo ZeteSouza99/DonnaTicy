@@ -9,6 +9,8 @@ import { clientFetch } from "@/lib/client-fetch";
 import { readInvoiceFiles } from "@/lib/import/invoice-browser";
 import { validateReceiptReview, validateReceiptDraft, type InvoiceDocument, type ReceiptReview } from "@/lib/import/invoice-document";
 
+import { fillReceiptBlanks, singleReceiptOptions } from "@/lib/import/receipt-autofill";
+
 type Option={id:string;name:string};
 type Result={invoiceId:string;totalUnits:number;productsCreated:number;variantsCreated:number};
 type Draft={id:string;status:string;document:InvoiceDocument;review?:ReceiptReview;summary:Partial<Result>};
@@ -31,7 +33,8 @@ export function InvoiceImport({files,onBusyChange,onStart}:{files:File[];onBusyC
  const [draft,setDraft]=useState<Draft|null>(null);const [review,setReview]=useState<ReceiptReview|null>(null);
  const [busy,setBusy]=useState(false);const [progress,setProgress]=useState("");const [error,setError]=useState("");const [confirmed,setConfirmed]=useState(false);
  const [result,setResult]=useState<Partial<Result>|null>(null);const [bulkCategory,setBulkCategory]=useState("");const [markup,setMarkup]=useState("");
- function open(item:Draft){setDraft(item);setConfirmed(false);setResult(item.status==="COMPLETED"?item.summary:null);setReview(item.review??{locationId:"",collectionId:"",lineId:"",confirmed:true,items:item.document.items.map(i=>({line:i.line,categoryId:"",salePrice:0,allocations:[{quantity:i.quantity,color:"",size:""}]}))});}
+ const [bulkColor,setBulkColor]=useState("");const [bulkSize,setBulkSize]=useState("");const [bulkMessage,setBulkMessage]=useState("");
+ function open(item:Draft){setDraft(item);setConfirmed(false);setBulkMessage("");setResult(item.status==="COMPLETED"?item.summary:null);setReview(item.review??{...singleReceiptOptions(options.data),confirmed:true,items:item.document.items.map(i=>({line:i.line,categoryId:"",salePrice:0,allocations:[{quantity:i.quantity,color:"",size:""}]}))});}
  async function read(){if(reading.current)return;reading.current=true;onStart();setBusy(true);setError("");setProgress("Lendo documento…");try{
   const document=await readInvoiceFiles(files,setProgress);open(await clientFetch<Draft>("/api/imports/invoices",{method:"POST",body:document}));options.refresh();
  }catch(e){setError(e instanceof Error?e.message:"Não foi possível ler a nota.");}finally{reading.current=false;setBusy(false);setProgress("");}}
@@ -49,7 +52,7 @@ export function InvoiceImport({files,onBusyChange,onStart}:{files:File[];onBusyC
  const reading=useRef(false);
  const done=draft?.status==="COMPLETED";
  return <div className="mx-auto max-w-5xl space-y-6">
- <div className="space-y-3"><button className="btn-primary" disabled={busy||!files.length||!!draft} onClick={()=>void read()}>{busy?<Loader2 size={16} className="animate-spin"/>:<Upload size={16}/>} Ler arquivo</button><p className="text-sm text-gray-500">A leitura salva uma conferência. O estoque só muda em “Confirmar entrada”.</p></div>
+ <div className="space-y-3"><button className="btn-primary" disabled={busy||!options.data||!files.length||!!draft} onClick={()=>void read()}>{busy?<Loader2 size={16} className="animate-spin"/>:<Upload size={16}/>} Ler arquivo</button><p className="text-sm text-gray-500">A leitura salva uma conferência. O estoque só muda em “Confirmar entrada”.</p></div>
  {progress&&<p className="text-sm" role="status">{progress}</p>}{(error||options.error)&&<ErrorMessage message={error||String(options.error)}/>}
  {draft&&review&&<section className="panel space-y-5 p-6">
  <h2 className="font-semibold">2. Confira a NF {draft.document.number} · série {draft.document.series}</h2>
@@ -60,7 +63,22 @@ export function InvoiceImport({files,onBusyChange,onStart}:{files:File[];onBusyC
  <p className="text-sm text-gray-600">A nota pode reunir tamanhos e cores na mesma linha. Distribua a quantidade conforme as peças recebidas. Preços de venda de produtos já cadastrados são preservados. Esta entrada registra a nota e o estoque; não cria uma conta a pagar.</p>
  <fieldset disabled={busy||done} className="space-y-5 disabled:opacity-70">
  <div className="grid gap-4 sm:grid-cols-3">{([['locationId','Estoque de destino','locations'],['collectionId','Coleção dos novos produtos','collections'],['lineId','Linha dos novos produtos','lines']] as const).map(([key,label,list])=><Select key={key} label={label} value={review[key]} options={options.data?.[list]??[]} onChange={v=>{setReview({...review,[key]:v});setConfirmed(false);}}/>)}</div>
- <div className="rounded-xl bg-gray-50 p-4 space-y-3"><h3 className="text-sm font-medium">Preencher novos produtos em lote</h3><div className="grid gap-3 sm:grid-cols-3"><Select label="Categoria" value={bulkCategory} options={options.data?.categories??[]} onChange={setBulkCategory}/><label className="text-sm">Multiplicador sobre o custo com frete<input className={field} type="number" min="0.01" step="0.01" placeholder="Ex.: 2,5" value={markup} onChange={e=>setMarkup(e.target.value)}/></label><button className="btn-secondary self-end" type="button" onClick={()=>{const factor=Number(markup);setConfirmed(false);setReview({...review,items:review.items.map((v,i)=>({...v,categoryId:bulkCategory||v.categoryId,salePrice:factor>0&&Number.isFinite(factor)?Math.round((draft.document.invoiceTotal*draft.document.items[i].total/draft.document.productsTotal/draft.document.items[i].quantity)*factor*100)/100:v.salePrice}))});}}>Aplicar aos novos produtos</button></div></div>
+
+ <div className="rounded-xl bg-gray-50 p-4 space-y-3">
+  <h3 className="text-sm font-medium">Preencher campos vazios</h3>
+  <p className="text-sm text-gray-600">Informe só o que for comum aos novos produtos. Valores já preenchidos e variantes cadastradas serão preservados.</p>
+  <div className="grid gap-3 sm:grid-cols-2">
+   <Select label="Categoria para campos vazios" value={bulkCategory} options={options.data?.categories??[]} onChange={setBulkCategory}/>
+   <label className="text-sm">Multiplicador do custo com frete<input className={field} type="number" min="0.01" step="0.01" placeholder="Ex.: 2,5" value={markup} onChange={e=>setMarkup(e.target.value)}/><span className="text-xs text-gray-500">Ex.: custo de R$ 40 × 2,5 = venda a R$ 100.</span></label>
+   <label className="text-sm">Cor para campos vazios<input className={field} maxLength={60} placeholder="Ex.: Preto" value={bulkColor} onChange={e=>setBulkColor(e.target.value)}/></label>
+   <label className="text-sm">Tamanho para campos vazios<input className={field} maxLength={10} placeholder="Ex.: M" value={bulkSize} onChange={e=>setBulkSize(e.target.value)}/></label>
+  </div>
+  <button className="btn-secondary" type="button" disabled={!bulkCategory&&!markup&&!bulkColor.trim()&&!bulkSize.trim()} onClick={()=>{
+   try { const filled=fillReceiptBlanks(draft.document,review,{categoryId:bulkCategory,color:bulkColor,size:bulkSize,multiplier:markup});setReview(filled.review);if(filled.changed)setConfirmed(false);setError("");setBulkMessage(filled.changed?filled.changed+" campos preenchidos. Confira os itens antes de confirmar a entrada.":"Nenhum campo vazio para preencher com esses valores."); }
+   catch(e){setError(e instanceof Error?e.message:"Confira os valores para preenchimento.");setBulkMessage("");}
+  }}>Preencher campos vazios</button>
+  {bulkMessage&&<p role="status" className="text-sm text-brand-700">{bulkMessage}</p>}
+ </div>
  {draft.document.items.map((item,index)=>{
   const row=review.items[index];const allocated=row.allocations.reduce((s,a)=>s+a.quantity,0);const needsNew=row.allocations.some(a=>!a.variantId);
   return <article key={item.line} className="rounded-xl border border-gray-200 p-4 space-y-4"><div><h3 className="font-semibold">{item.line}. {item.description}</h3><p className="text-sm text-gray-500">Código do fornecedor {item.code} · {item.quantity} peças · custo unitário {brl(item.unitPrice)} · total {brl(item.total)}</p></div>

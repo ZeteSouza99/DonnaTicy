@@ -44,7 +44,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       const key = dayFormat.format(new Date(day)); dailySeries.push({ day: key, total: dailyValues.get(key) ?? 0 });
     }
     return NextResponse.json({
-      period: { from, to, previousFrom, previousTo },
+      period: { from, to, previousFrom, previousTo, timeZone: zone },
       settings: { monthlySalesGoal: settings.monthlySalesGoal, activeCustomerDays: settings.activeCustomerDays },
       kpis: { faturamentoMes: revenue, crescimentoVsMesAnterior: prev > 0 ? Math.round((revenue - prev) / prev * 10000) / 100 : null,
         margemBruta: revenue ? Math.round((revenue - cmv) / revenue * 10000) / 100 : 0,

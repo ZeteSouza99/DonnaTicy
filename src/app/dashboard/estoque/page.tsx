@@ -3,7 +3,9 @@
 import { useEffect, useState } from "react";
 import { useApiQuery } from "@/hooks/use-api-query";
 import { useDebounce } from "@/hooks/use-debounce";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { useSessionUser } from "@/components/layout/session-context";
+import { can } from "@/lib/permissions";
 import { AlertTriangle, X, Pencil, Check, Loader2, Trash2 } from "lucide-react";
 import type { ChangeEvent } from "react";
 import { clientFetch } from "@/lib/client-fetch";
@@ -22,12 +24,13 @@ interface StockPosition {
   safetyStock: number;
   maxStock: number;
   variant: {
+    id: string;
     sku: string;
     product: { id: string; name: string };
     color: { name: string; hexValue?: string };
     size: { name: string };
   };
-  location: { name: string };
+  location: { id: string; name: string };
 }
 
 interface StockResponse {
@@ -67,7 +70,7 @@ function statusBadge(s: StockPosition): React.ReactNode {
 // ---------------------------------------------------------------------------
 
 export default function EstoquePage(): React.ReactNode {
-  const router = useRouter();
+  const user = useSessionUser();
 
   const [belowMin, setBelowMin] = useState(false);
   const [page, setPage] = useState(1);
@@ -91,7 +94,7 @@ export default function EstoquePage(): React.ReactNode {
   const {data:stock,loading:isLoading,error,refresh:fetchStock} = useApiQuery<StockResponse>(`/api/inventory/stock?${query}`);
   const {data:locations} = useApiQuery<{data:Array<{id:string;name:string}>}>("/api/inventory/locations?limit=100");
   useEffect(()=>{setBelowMin(new URLSearchParams(window.location.search).get("belowMin")==="true");},[]);
-  useEffect(() => { setSelectedProductIds(new Set()); setDeleteError(null); }, [belowMin, page]);
+  useEffect(() => { setSelectedProductIds(new Set()); setDeleteError(null); }, [belowMin, page, search, locationId]);
 
   // ---------------------------------------------------------------------------
   // Exclusão de produtos
@@ -222,12 +225,10 @@ export default function EstoquePage(): React.ReactNode {
     <div className="space-y-6">
       <div className="page-heading">
         <h1 className="text-2xl font-bold text-gray-900">Gestão de Estoque</h1>
-        <button
-          onClick={() => router.push("/dashboard/estoque/movimentar")}
-          className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 transition-colors"
-        >
-          Nova Movimentação
-        </button>
+        <div className="flex flex-wrap gap-2">
+          {can(user.role,"imports","write")&&<Link href="/dashboard/catalogo/importar" className="btn-secondary">Receber por nota ou planilha</Link>}
+          {can(user.role,"inventory","write")&&<Link href="/dashboard/estoque/movimentar" className="btn-primary">Movimentar estoque</Link>}
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-3 rounded-xl border border-gray-200 bg-white p-3">
@@ -407,6 +408,7 @@ export default function EstoquePage(): React.ReactNode {
                           </div>
                         ) : (
                           <div className="inline-flex items-center gap-1">
+                            {can(user.role,"inventory","write")&&<Link className="rounded-lg px-2 py-1.5 text-xs font-semibold text-brand-700 hover:bg-brand-50" aria-label={"Movimentar "+sp.variant.product.name+", "+sp.variant.color.name+", "+sp.variant.size.name+", em "+sp.location.name} href={{pathname:"/dashboard/estoque/movimentar",query:{variantId:sp.variant.id,locationId:sp.location.id}}}>Movimentar</Link>}
                             <button onClick={() => startEditing(sp)} className="rounded p-1.5 text-gray-500 hover:bg-gray-100 hover:text-brand-600" title="Editar">
                               <Pencil size={16} />
                             </button>

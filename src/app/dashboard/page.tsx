@@ -1,17 +1,18 @@
 "use client";
 import { useState } from "react";
 import Link from "next/link";
-import { ArrowUpRight, ShoppingBag, Wallet, Target, TrendingUp, RefreshCw, AlertTriangle, Users, RotateCcw, Plus, Package } from "lucide-react";
+import { ArrowUpRight, ShoppingBag, Wallet, Target, TrendingUp, RefreshCw, AlertTriangle, Users, RotateCcw, Plus, Package, FileInput, ArrowLeftRight, PackagePlus } from "lucide-react";
 import { useApiQuery } from "@/hooks/use-api-query";
 import { useSessionUser } from "@/components/layout/session-context";
 import { PageHeader } from "@/components/ui/page-header";
 import { LoadingSpinner, ErrorMessage } from "@/components/ui/feedback";
 import { SalesChart } from "@/components/dashboard/sales-chart";
 import { formatBRL } from "@/lib/format";
+import { dashboardPeriod } from "@/lib/dashboard-period";
 import { can } from "@/lib/permissions";
 
 type DashboardData = {
- period: { from: string; to: string; previousFrom: string; previousTo: string };
+ period: { from: string; to: string; previousFrom: string; previousTo: string; timeZone: string };
  settings: { monthlySalesGoal: number; activeCustomerDays: number };
  kpis: { faturamentoMes: number; crescimentoVsMesAnterior: number | null; ticketMedio: number; margemBruta: number; totalPedidosMes: number; totalClientes: number; novosClientesMes: number; alertasEstoqueBaixo: number; devolucoesEmAberto: number };
  breakdowns: { daily: Array<{ day: string; total: number }>; pedidosPorStatus: Array<{ status: string; count: number }>; pedidosPorCanal: Array<{ channel: string; count: number; total: number }>; topProdutos: Array<{ variantId: string; name: string; sku: string; quantidadeVendida: number; faturamento: number }> };
@@ -34,13 +35,23 @@ export default function DashboardPage() {
  ];
  const maxChannel = Math.max(...data.breakdowns.pedidosPorCanal.map((c) => c.total),1);
  const goal = data.settings.monthlySalesGoal;
+ const quickActions = [
+  { allowed: can(user.role,"imports","write")&&can(user.role,"catalog","read"), href:"/dashboard/catalogo/importar", label:"Receber mercadorias", detail:"Importar planilha, XML, PDF ou foto", icon:FileInput },
+  { allowed: can(user.role,"catalog","write"), href:"/dashboard/catalogo/novo", label:"Cadastrar produto", detail:"Criar produto, cores e tamanhos", icon:PackagePlus },
+  { allowed: can(user.role,"inventory","write"), href:"/dashboard/estoque/movimentar", label:"Movimentar estoque", detail:"Entrada, saída ou transferência", icon:ArrowLeftRight },
+ ].filter(action=>action.allowed);
+ function selectPeriod(preset: "today" | "week" | "month") {
+  const range=dashboardPeriod(preset,new Date(),data!.period.timeZone);
+  setFrom(range.from);setTo(range.to);
+ }
  return <div className="space-y-6" aria-busy={loading}>
   <PageHeader title="Visão geral" description={`Olá, ${user.name.split(" ")[0]}. Acompanhe o movimento da sua operação.`} actions={<>{can(user.role,"orders","write") && <Link href="/dashboard/vendas" className="btn-primary"><Plus size={17} />Nova venda</Link>}<button className="btn-secondary" onClick={refresh} aria-label="Atualizar indicadores"><RefreshCw size={16} className={loading ? "animate-spin" : ""} /></button></>} />
+  {quickActions.length>0&&<nav aria-label="Atalhos do dia a dia" className="grid gap-3 sm:grid-cols-3">{quickActions.map(({href,label,detail,icon:Icon})=><Link key={href} href={href} className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white p-4 hover:border-brand-400 hover:bg-brand-50 focus-visible:outline-2 focus-visible:outline-brand-600"><Icon size={22} className="shrink-0 text-brand-600"/><span className="min-w-0 flex-1"><strong className="block text-sm">{label}</strong><span className="text-xs text-gray-500">{detail}</span></span><ArrowUpRight size={16}/></Link>)}</nav>}
   <div className="grid grid-cols-2 items-end gap-3 rounded-xl sm:flex sm:flex-wrap border border-gray-200 bg-white p-3">
    <label className="min-w-0 flex-1"><span className="field-label">De</span><input type="date" aria-label="Data inicial" className="field-input" value={from} onChange={(e) => setFrom(e.target.value)} /></label>
    <label className="min-w-0 flex-1"><span className="field-label">Até</span><input type="date" aria-label="Data final" className="field-input" value={to} onChange={(e) => setTo(e.target.value)} /></label>
    {can(user.role, "inventory", "read") && <label className="min-w-0 flex-1"><span className="field-label">Local de estoque</span><select className="field-input" disabled={!locations} value={location} onChange={(e) => setLocation(e.target.value)}><option value="">Todos os locais</option>{locations?.data.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}</select></label>}
-   <button className="btn-secondary" onClick={() => { setFrom(""); setTo(""); setLocation(""); }}>Este mês</button>
+   <div className="col-span-2 flex flex-wrap gap-2" role="group" aria-label="Períodos rápidos"><button className="btn-secondary" onClick={()=>selectPeriod("today")}>Hoje</button><button className="btn-secondary" onClick={()=>selectPeriod("week")}>Últimos 7 dias</button><button className="btn-secondary" onClick={()=>selectPeriod("month")}>Este mês</button></div>
   </div>
   {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}
   <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">{stats.map(({label,value,detail,icon:Icon}) => <article key={label} className="panel !p-4 sm:!p-5"><div className="flex items-center justify-between gap-2"><span className="text-xs font-medium text-gray-500">{label}</span><Icon size={17} className="shrink-0 text-brand-600" /></div><p className="stat-value mt-4">{value}</p><p className="mt-2 text-[11px] leading-relaxed text-gray-500">{detail}</p></article>)}</div>
