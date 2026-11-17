@@ -1,6 +1,6 @@
 # Importação de notas de fornecedores
 
-Tela: `/dashboard/notas-fiscais/importar`, acessível em Entradas de Mercadoria e Importar catálogo.
+Tela única disponível em `/dashboard/notas-fiscais/importar` e `/dashboard/catalogo/importar`. As duas rotas usam o mesmo componente e aceitam XLSX, XML, PDF e fotos no mesmo campo. O formato é identificado antes da leitura. Não é necessário trocar de tela ou selecionar o arquivo novamente.
 
 1. Enviar XML autorizado de NF-e modelo 55, PDF do DANFE ou fotos de todas as páginas.
 2. Conferir os dados, escolher o estoque e distribuir as peças por cor e tamanho. É possível vincular variantes existentes ou criar produtos novos, informando categoria e preço de venda. O preenchimento de categoria e multiplicador de preço pode ser aplicado em lote.
@@ -43,3 +43,13 @@ Os testes de integração usam PostgreSQL descartável em loopback e substituem 
 Em 16/11/2026, o PDF original e imagens PNG de suas duas páginas foram lidos no Chrome com as regras de conteúdo da produção: 22 itens, 130 peças, R$ 4.390,50 em produtos, R$ 355,76 de frete e R$ 4.746,26 no total. Também foi validado um XML sintético. Uma imagem renderizada do PDF não substitui testes de fotos de câmera com inclinação ou iluminação ruim.
 
 O OCR pode confundir letras e números nos códigos e descrições. A conferência permite corrigi-los explicitamente, mantendo a leitura original no histórico. Códigos repetidos com descrições diferentes bloqueiam a criação de novos produtos até serem conferidos. A leitura não adivinha dígitos; totais e quantidades precisam fechar antes de salvar o rascunho inicial.
+
+## Planilhas XLSX na tela unificada
+
+O botão “Baixar modelo XLSX” fornece os cabeçalhos reconhecidos. A leitura usa a primeira aba e apresenta produtos, SKU, cor, tamanho, categoria, quantidade, custo e preço de venda. A API de prévia exige imports:write e não grava no banco. Erros por linha impedem confirmar; corrija o XLSX e escolha o arquivo novamente. Não há mapeamento automático de cabeçalhos arbitrários.
+
+A confirmação explícita envia o mesmo arquivo para o importador existente. A entrada mantém o estoque MATRIZ, coleção e linha DEFAULT, atualiza preços conforme a planilha e preserva o processamento por nota e histórico retomável. PDF/XML/fotos mantêm a distribuição de cor/tamanho e a conferência salva. O botão “Escolher outro arquivo” confirma o descarte das edições ainda não salvas.
+
+Validação dos novos fluxos: `npm test -- tests/import-files.test.ts tests/spreadsheet-preview-api.test.ts`.
+
+Limites da tela: XLSX até 4 MB (envio para API); XML/PDF/fotos até 10 MB por arquivo, até 10 fotos e 25 MB no total. Para lotes maiores, divida a planilha mantendo cada nota no mesmo lote.

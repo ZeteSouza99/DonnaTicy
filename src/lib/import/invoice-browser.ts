@@ -1,3 +1,4 @@
+import { detectImportFormat } from "./import-files";
 import { parseDanfeText, pdfTextLines, validateInvoiceDocument, type InvoiceDocument } from "./invoice-document";
 
 type Metadata = Pick<InvoiceDocument,"fileName"|"fileHash"|"source">;
@@ -57,9 +58,9 @@ function runtime(): Promise<ReaderRuntime> {
 }
 
 export async function readInvoiceFiles(files: File[], progress:(value:string)=>void): Promise<InvoiceDocument> {
-  if (!files.length || files.length>10 || files.some(f=>f.size===0 || f.size>10*1024*1024) || files.reduce((n,f)=>n+f.size,0)>25*1024*1024) throw new Error("Selecione um XML/PDF ou até 10 fotos, com até 10 MB por arquivo e 25 MB no total.");
+  const format=detectImportFormat(files);
+  if(format==="xlsx") throw new Error("Use a leitura de planilha para arquivos XLSX.");
   const types=files.map(f=>f.name.toLowerCase().split(".").at(-1));
-  if (files.length>1 && types.some(t=>!["jpg","jpeg","png","webp"].includes(t??""))) throw new Error("Envie um XML ou PDF por vez. Para fotos, selecione todas as páginas juntas.");
   const bytes=await Promise.all(files.map(f=>f.arrayBuffer()));
   const joined=new Uint8Array(bytes.reduce((n,b)=>n+b.byteLength,0));let offset=0;
   for(const b of bytes){joined.set(new Uint8Array(b),offset);offset+=b.byteLength;}
