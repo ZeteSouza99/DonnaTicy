@@ -5,7 +5,7 @@ import { SYSTEM_SUBSCRIPTION, getSubscriptionCycle } from "@/lib/subscription";
 
 describe("generatePixPayload", () => {
   const base = {
-    pixKey: "02607265240",
+    pixKey: "financeiro@example.com",
     merchantName: "ZETE TELES DE SOUZA",
     merchantCity: "SAO PAULO",
     amount: 100,

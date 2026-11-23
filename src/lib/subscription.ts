@@ -18,7 +18,7 @@ export const SYSTEM_SUBSCRIPTION = {
   amount: Number(process.env.NEXT_PUBLIC_SUBSCRIPTION_AMOUNT ?? 100),
   /** Dia do mês em que a mensalidade vence. */
   dueDay: Number(process.env.NEXT_PUBLIC_SUBSCRIPTION_DUE_DAY ?? 20),
-  pixKey: process.env.NEXT_PUBLIC_SUBSCRIPTION_PIX_KEY ?? "02607265240",
+  pixKey: process.env.NEXT_PUBLIC_SUBSCRIPTION_PIX_KEY ?? "zete-ts@hotmail.com",
   beneficiaryName:
     process.env.NEXT_PUBLIC_SUBSCRIPTION_PIX_NAME ?? "ZETE TELES DE SOUZA",
   beneficiaryCity:
