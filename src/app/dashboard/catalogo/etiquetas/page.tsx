@@ -6,7 +6,6 @@ import { ArrowLeft, Barcode as BarcodeIcon, Printer, Search, Trash2 } from "luci
 import { clientFetch } from "@/lib/client-fetch";
 import { useDebounce } from "@/hooks/use-debounce";
 import { ProductLabel } from "@/components/catalog/product-label";
-import { LabelPrintSheet, printLabelSheet } from "@/components/catalog/label-print-sheet";
 import { LoadingSpinner, EmptyState, ErrorMessage } from "@/components/ui/feedback";
 import { variantSalePrice } from "@/lib/money";
 import { clampLabelCopies, defaultCopiesForStock, MAX_LABEL_COPIES, totalStockQuantity } from "@/lib/label-copies";
@@ -141,7 +140,7 @@ export default function LabelsPage(): React.ReactNode {
           )}
           <button
             type="button"
-            onClick={printLabelSheet}
+            onClick={() => window.print()}
             disabled={sheet.length === 0}
             className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
@@ -275,20 +274,8 @@ export default function LabelsPage(): React.ReactNode {
       </div>
 
       {/* Folha de impressão */}
-      <LabelPrintSheet
-        labels={sheet.map(({ variant, key }) => ({
-          key,
-          productName: variant.product.name,
-          colorName: variant.color?.name,
-          sizeName: variant.size?.name,
-          price: variantSalePrice(variant.product.basePrice, variant.additionalCost),
-          barcode: variant.barcode,
-          sku: variant.sku,
-        }))}
-      />
-
       {sheet.length > 0 && (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 print:grid-cols-4">
           {sheet.map(({ variant, key }) => (
             <ProductLabel
               key={key}

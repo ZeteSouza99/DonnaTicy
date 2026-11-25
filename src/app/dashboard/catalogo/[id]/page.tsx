@@ -7,7 +7,6 @@ import { clientFetch } from "@/lib/client-fetch";
 import { LoadingSpinner, ErrorMessage } from "@/components/ui/feedback";
 import { MoneyInput } from "@/components/ui/money-input";
 import { ProductLabel } from "@/components/catalog/product-label";
-import { LabelPrintSheet, printLabelSheet } from "@/components/catalog/label-print-sheet";
 import { LabelCopiesList } from "@/components/catalog/label-copies-list";
 import { clampLabelCopies, defaultLabelCopies, expandLabelCopies, totalStockQuantity } from "@/lib/label-copies";
 import { variantSalePrice } from "@/lib/money";
@@ -361,7 +360,7 @@ function VariantBarcodes({ variants, productName, basePrice, isGenerating, onGen
           )}
           <button
             type="button"
-            onClick={printLabelSheet}
+            onClick={() => window.print()}
             disabled={sheet.length === 0}
             className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
           >
@@ -379,18 +378,6 @@ function VariantBarcodes({ variants, productName, basePrice, isGenerating, onGen
           copies,
         }))}
         onChange={(id, copies) => setCopiesOverride((prev) => ({ ...prev, [id]: clampLabelCopies(copies, 0) }))}
-      />
-
-      <LabelPrintSheet
-        labels={sheet.map(({ variant: v }, index) => ({
-          key: `${v.id}-${index}`,
-          productName,
-          colorName: v.color?.name,
-          sizeName: v.size?.name,
-          price: variantSalePrice(basePrice, v.additionalCost),
-          barcode: v.barcode,
-          sku: v.sku,
-        }))}
       />
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">

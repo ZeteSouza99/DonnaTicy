@@ -7,7 +7,6 @@ import { clientFetch } from "@/lib/client-fetch";
 import { LoadingSpinner } from "@/components/ui/feedback";
 import { MoneyInput } from "@/components/ui/money-input";
 import { ProductLabel } from "@/components/catalog/product-label";
-import { LabelPrintSheet, printLabelSheet } from "@/components/catalog/label-print-sheet";
 import { LabelCopiesList } from "@/components/catalog/label-copies-list";
 import { normalizeInternalCode } from "@/lib/barcode";
 import { clampLabelCopies, defaultLabelCopies, expandLabelCopies } from "@/lib/label-copies";
@@ -487,7 +486,7 @@ function LabelSheet({
         <div className="flex gap-2">
           <button
             type="button"
-            onClick={printLabelSheet}
+            onClick={() => window.print()}
             disabled={sheet.length === 0}
             className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
@@ -514,9 +513,7 @@ function LabelSheet({
         onChange={onChangeCopies}
       />
 
-      <LabelPrintSheet labels={sheet.map((label, index) => ({ ...label, key: `${label.sku}-${index}` }))} />
-
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 print:grid-cols-4">
         {sheet.map((label, index) => (
           <ProductLabel
             key={`${label.sku}-${index}`}

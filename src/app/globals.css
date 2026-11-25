@@ -36,31 +36,6 @@
     margin: 0 !important;
   }
 
-  /* Etiquetas de produto: só a folha de etiquetas, uma página de 80 x 50 mm por etiqueta. */
-  @page product-label {
-    size: 80mm 50mm;
-    margin: 0;
-  }
-
-  body.printing-labels > *:not(#label-print-root) {
-    display: none !important;
-  }
-
-  body.printing-labels {
-    display: block !important;
-    min-height: 0 !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    background: #fff !important;
-    color: #000 !important;
-    print-color-adjust: exact !important;
-  }
-
-  body.printing-labels #label-print-root {
-    page: product-label;
-    display: block !important;
-  }
-
   .print-receipt {
     width: 100%;
     font-family: "Courier New", Courier, monospace;
@@ -251,67 +226,4 @@ html { scrollbar-gutter: stable; }
   .catalog-table td:nth-child(3) { order: -1; grid-column: 1/-1; padding-right: 28px; font-weight: 650; font-size: 16px; }
   .catalog-table td:nth-child(6) { color: #515c25; font-weight: 650; }
   .catalog-table td:last-child { grid-column: 1/-1; flex-direction: row; align-items: center; margin-top: 6px; border-top: 1px solid #f0f1f3; padding-top: 12px; }
-}
-
-/* ===== Etiqueta de produto impressa (80 x 50 mm) ===== */
-#label-print-root {
-  display: none;
-}
-
-.print-label {
-  box-sizing: border-box;
-  width: 80mm;
-  height: 50mm;
-  padding: 2mm 4mm;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 0.8mm;
-  overflow: hidden;
-  text-align: center;
-  font-family: Arial, Helvetica, sans-serif;
-  color: #000;
-  break-inside: avoid;
-}
-
-.print-label + .print-label {
-  break-before: page;
-}
-
-.print-label__name {
-  max-height: 2.3em;
-  overflow: hidden;
-  font-size: 9pt;
-  font-weight: 700;
-  line-height: 1.15;
-}
-
-.print-label__variant {
-  font-size: 8pt;
-}
-
-.print-label__price {
-  font-size: 16pt;
-  font-weight: 800;
-  line-height: 1.1;
-}
-
-.print-label__barcode {
-  font-size: 8pt;
-}
-
-.print-label__barcode svg {
-  display: block;
-  width: 47.5mm;
-  height: auto;
-}
-
-.print-label__barcode svg rect {
-  shape-rendering: crispEdges;
-}
-
-.print-label__sku {
-  font-family: "Courier New", Courier, monospace;
-  font-size: 7pt;
 }
