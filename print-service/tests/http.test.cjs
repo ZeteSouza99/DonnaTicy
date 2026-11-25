@@ -53,21 +53,10 @@ test('envio valido recebe confirmacao da fila simulada', async () => {
   assert.deepEqual(await (await post('https://donnaticy.vercel.app')).json(), { success:true })
   assert.equal(jobs, 1)
 })
-test('etiquetas de produto vao para a fila em um unico trabalho', async () => {
-  const labels = { type:'product_labels', data:{ labels:[{ productName:'Legging', price:189.9, barcode:'2000000012346', sku:'LEG-M', copies:3 }] } }
-  assert.deepEqual(await (await post('https://donnaticy.vercel.app', labels)).json(), { success:true })
-  assert.equal(jobs, 2)
-})
-test('etiqueta invalida nao imprime', async () => {
-  const response = await post('https://donnaticy.vercel.app', { type:'product_labels', data:{ labels:[{ productName:'Legging', price:10, sku:'LEG-M', copies:100 }] } })
-  assert.equal(response.status, 400)
-  assert.match((await response.json()).error, /Cópias/)
-  assert.equal(jobs, 2)
-})
 test('falha da fila nao vira sucesso e nao e reenviada', async () => {
   fail = true
   const response = await post('https://donnaticy.vercel.app')
   assert.equal(response.status, 500)
   assert.match((await response.json()).error, /spooler simulado/)
-  assert.equal(jobs, 3)
+  assert.equal(jobs, 2)
 })

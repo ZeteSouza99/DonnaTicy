@@ -3,7 +3,6 @@ const cors = require('cors')
 const fs = require('fs')
 const path = require('path')
 const { buildSaleReceipt } = require('./receipt-builder')
-const { buildProductLabels } = require('./label-builder')
 const { printRaw } = require('./win-print')
 
 // config.json (criado pelo install.bat) ou variáveis de ambiente, que têm prioridade.
@@ -67,14 +66,11 @@ app.post('/print', async (req, res) => {
       case 'sale_receipt':
         buffer = buildSaleReceipt(data, store || {})
         break
-      case 'product_labels':
-        buffer = buildProductLabels(data.labels)
-        break
       default:
         return res.status(400).json({ error: `Tipo de impressão inválido: ${type}` })
     }
   } catch (err) {
-    return res.status(400).json({ error: `Erro ao gerar impressão: ${err.message}` })
+    return res.status(400).json({ error: `Erro ao gerar recibo: ${err.message}` })
   }
 
   try {

@@ -1,5 +1,5 @@
 /**
- * Impressão de comprovante de venda (não fiscal) e etiquetas de produto — Bematech MP-4200 TH.
+ * Impressão de comprovante de venda (não fiscal) — Bematech MP-4200 TH.
  *
  * Estratégia (mesma estrutura do PDV Martcell):
  * 1. Tenta o serviço local de impressão (print-service/) em http://127.0.0.1:15555 → ESC/POS bruto.
@@ -11,9 +11,7 @@
 import { brand } from "./brand";
 
 import { renderReceiptHtml, type SaleReceiptData, type StoreInfo } from "../../print-service/receipt-layout";
-import { renderProductLabelsHtml, type ProductLabelData } from "../../print-service/label-layout";
 export type { SaleReceiptData, ReceiptItem, ReceiptPayment } from "../../print-service/receipt-layout";
-export type { ProductLabelData } from "../../print-service/label-layout";
 
 // ===== Configuração =====
 
@@ -78,7 +76,7 @@ async function printViaService(data: SaleReceiptData, store: StoreInfo): Promise
 
 // ===== Fallback HTML (80mm via window.print) =====
 
-function printHtml(html: string, extraClass?: string): void {
+function printHtml(html: string): void {
   let printRoot = document.getElementById("print-root");
   if (!printRoot) {
     printRoot = document.createElement("div");
@@ -89,13 +87,12 @@ function printHtml(html: string, extraClass?: string): void {
 
   printRoot.innerHTML = html;
   printRoot.style.display = "block";
-  const classes = extraClass ? ["printing-receipt", extraClass] : ["printing-receipt"];
 
   setTimeout(() => {
-    document.body.classList.add(...classes);
+    document.body.classList.add("printing-receipt");
     window.print();
     setTimeout(() => {
-      document.body.classList.remove(...classes);
+      document.body.classList.remove("printing-receipt");
       printRoot.style.display = "none";
       printRoot.innerHTML = "";
     }, 500);
@@ -156,36 +153,4 @@ export async function printSaleReceipt(sale: SaleReceiptData): Promise<void> {
   } catch {
     // Impressão nunca deve quebrar o fluxo de venda.
   }
-}
-
-/**
- * Etiquetas de produto na bobina de 80 mm. Usa o serviço local (ESC/POS, corte entre etiquetas);
- * sem serviço, ou com uma versão instalada que ainda não conhece etiquetas, abre a impressão do
- * navegador com uma página de 80 x 50 mm por etiqueta. Falha depois do envio é lançada, sem segunda
- * tentativa, para não imprimir em dobro.
- */
-export async function printProductLabels(labels: ProductLabelData[]): Promise<"service" | "browser"> {
-  const html = renderProductLabelsHtml(labels);
-  if (await isPrintServiceOnline()) {
-    let response: Response;
-    try {
-      response = await fetch(`${PRINT_SERVICE_URL}/print`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "product_labels", data: { labels } }),
-        signal: AbortSignal.timeout(30_000),
-      });
-    } catch {
-      serviceHealthCache = null;
-      throw new Error("O serviço de impressão não respondeu. Confira a impressora antes de tentar de novo.");
-    }
-    const result = await response.json().catch(() => ({}));
-    if (response.ok && result.success === true) return "service";
-    const error = typeof result.error === "string" ? result.error : "";
-    if (!(response.status === 400 && error.startsWith("Tipo de impressão inválido"))) {
-      throw new Error(error || "O serviço não confirmou o envio à fila.");
-    }
-  }
-  printHtml(html, "printing-labels");
-  return "browser";
 }

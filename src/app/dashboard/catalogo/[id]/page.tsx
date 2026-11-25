@@ -2,20 +2,14 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { ArrowLeft, Save, Trash2, Barcode as BarcodeIcon, Loader2 } from "lucide-react";
+import { ArrowLeft, Save, Trash2, Printer, Barcode as BarcodeIcon, Loader2 } from "lucide-react";
 import { clientFetch } from "@/lib/client-fetch";
 import { LoadingSpinner, ErrorMessage } from "@/components/ui/feedback";
 import { MoneyInput } from "@/components/ui/money-input";
 import { ProductLabel } from "@/components/catalog/product-label";
-import { PrintLabelsButton } from "@/components/catalog/print-labels-button";
+import { LabelCopiesList } from "@/components/catalog/label-copies-list";
+import { clampLabelCopies, defaultLabelCopies, expandLabelCopies, totalStockQuantity } from "@/lib/label-copies";
 import { variantSalePrice } from "@/lib/money";
-import {
-  clampLabelCopies,
-  defaultLabelCopies,
-  MAX_LABEL_COPIES,
-  prepareLabelsForPrint,
-  totalStockQuantity,
-} from "@/lib/label-copies";
 
 interface SelectOption {
   id: string;
@@ -331,41 +325,12 @@ interface VariantBarcodesProps {
 }
 
 function VariantBarcodes({ variants, productName, basePrice, isGenerating, onGenerate }: VariantBarcodesProps): React.ReactNode {
-  const initialCopies = useMemo(() => {
-    const counts = defaultLabelCopies(variants.map((v) => totalStockQuantity(v.stockPositions)));
-    return Object.fromEntries(variants.map((v, index) => [v.id, counts[index]]));
-  }, [variants]);
-
   const [copiesOverride, setCopiesOverride] = useState<Record<string, number>>({});
-
-  const copiesById = useMemo(
-    () =>
-      Object.fromEntries(
-        variants.map((v) => [v.id, copiesOverride[v.id] ?? initialCopies[v.id] ?? 1]),
-      ),
-    [variants, copiesOverride, initialCopies],
-  );
-
-  const printableLabels = useMemo(
-    () =>
-      prepareLabelsForPrint(
-        variants.map((v) => ({
-          productName,
-          colorName: v.color?.name,
-          sizeName: v.size?.name,
-          price: variantSalePrice(basePrice, v.additionalCost),
-          barcode: v.barcode,
-          sku: v.sku,
-          copies: copiesById[v.id] ?? 0,
-        })),
-      ),
-    [variants, productName, basePrice, copiesById],
-  );
-
-  const totalLabels = useMemo(
-    () => printableLabels.reduce((sum, item) => sum + (item.copies ?? 1), 0),
-    [printableLabels],
-  );
+  const items = useMemo(() => {
+    const initial = defaultLabelCopies(variants.map((v) => totalStockQuantity(v.stockPositions)));
+    return variants.map((v, i) => ({ variant: v, copies: copiesOverride[v.id] ?? initial[i] }));
+  }, [variants, copiesOverride]);
+  const sheet = useMemo(() => expandLabelCopies(items), [items]);
 
   if (variants.length === 0) return null;
   const missing = variants.filter((v) => !v.barcode).length;
@@ -393,49 +358,40 @@ function VariantBarcodes({ variants, productName, basePrice, isGenerating, onGen
               Gerar códigos
             </button>
           )}
-          <PrintLabelsButton
-            labels={printableLabels}
-            className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+          <button
+            type="button"
+            onClick={() => window.print()}
+            disabled={sheet.length === 0}
+            className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Imprimir etiquetas ({totalLabels})
-          </PrintLabelsButton>
+            <Printer size={16} /> Imprimir etiquetas ({sheet.length})
+          </button>
         </div>
       </div>
 
+      <LabelCopiesList
+        items={items.map(({ variant: v, copies }) => ({
+          key: v.id,
+          title: [v.color?.name, v.size?.name].filter(Boolean).join(" · ") || productName,
+          sku: v.sku,
+          hint: `estoque: ${totalStockQuantity(v.stockPositions)}`,
+          copies,
+        }))}
+        onChange={(id, copies) => setCopiesOverride((prev) => ({ ...prev, [id]: clampLabelCopies(copies, 0) }))}
+      />
+
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        {variants.map((v) => {
-          const stock = totalStockQuantity(v.stockPositions);
-          const copies = copiesById[v.id] ?? 0;
-          return (
-            <div key={v.id} className={`flex flex-col gap-1.5 ${copies === 0 ? "opacity-50" : ""}`}>
-              <ProductLabel
-                productName={productName}
-                colorName={v.color?.name}
-                sizeName={v.size?.name}
-                price={variantSalePrice(basePrice, v.additionalCost)}
-                barcode={v.barcode}
-                sku={v.sku}
-              />
-              <label className="flex items-center justify-between gap-2 rounded-lg border bg-gray-50 px-3 py-1.5 text-xs text-gray-700 print:hidden">
-                <span>Cópias (est. {stock})</span>
-                <input
-                  type="number"
-                  min={0}
-                  max={MAX_LABEL_COPIES}
-                  value={copies}
-                  onChange={(e) =>
-                    setCopiesOverride((prev) => ({
-                      ...prev,
-                      [v.id]: clampLabelCopies(Number(e.target.value), 0),
-                    }))
-                  }
-                  className="w-16 rounded border border-gray-300 bg-white px-2 py-0.5 text-center text-xs font-medium text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-                  aria-label={`Cópias de ${v.sku}`}
-                />
-              </label>
-            </div>
-          );
-        })}
+        {sheet.map(({ variant: v }, index) => (
+          <ProductLabel
+            key={`${v.id}-${index}`}
+            productName={productName}
+            colorName={v.color?.name}
+            sizeName={v.size?.name}
+            price={variantSalePrice(basePrice, v.additionalCost)}
+            barcode={v.barcode}
+            sku={v.sku}
+          />
+        ))}
       </div>
     </section>
   );
