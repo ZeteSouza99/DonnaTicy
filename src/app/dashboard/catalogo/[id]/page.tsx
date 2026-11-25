@@ -1,14 +1,12 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { ArrowLeft, Save, Trash2, Printer, Barcode as BarcodeIcon, Loader2 } from "lucide-react";
 import { clientFetch } from "@/lib/client-fetch";
 import { LoadingSpinner, ErrorMessage } from "@/components/ui/feedback";
 import { MoneyInput } from "@/components/ui/money-input";
 import { ProductLabel } from "@/components/catalog/product-label";
-import { LabelCopiesList } from "@/components/catalog/label-copies-list";
-import { clampLabelCopies, defaultLabelCopies, expandLabelCopies, totalStockQuantity } from "@/lib/label-copies";
 import { variantSalePrice } from "@/lib/money";
 
 interface SelectOption {
@@ -23,7 +21,6 @@ interface Variant {
   additionalCost: number | string;
   color?: { name: string; hexValue?: string | null };
   size?: { name: string };
-  stockPositions?: { locationId: string; quantity: number; reservedQty: number }[];
 }
 
 interface Product {
@@ -325,13 +322,6 @@ interface VariantBarcodesProps {
 }
 
 function VariantBarcodes({ variants, productName, basePrice, isGenerating, onGenerate }: VariantBarcodesProps): React.ReactNode {
-  const [copiesOverride, setCopiesOverride] = useState<Record<string, number>>({});
-  const items = useMemo(() => {
-    const initial = defaultLabelCopies(variants.map((v) => totalStockQuantity(v.stockPositions)));
-    return variants.map((v, i) => ({ variant: v, copies: copiesOverride[v.id] ?? initial[i] }));
-  }, [variants, copiesOverride]);
-  const sheet = useMemo(() => expandLabelCopies(items), [items]);
-
   if (variants.length === 0) return null;
   const missing = variants.filter((v) => !v.barcode).length;
 
@@ -361,29 +351,17 @@ function VariantBarcodes({ variants, productName, basePrice, isGenerating, onGen
           <button
             type="button"
             onClick={() => window.print()}
-            disabled={sheet.length === 0}
-            className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
           >
-            <Printer size={16} /> Imprimir etiquetas ({sheet.length})
+            <Printer size={16} /> Imprimir etiquetas
           </button>
         </div>
       </div>
 
-      <LabelCopiesList
-        items={items.map(({ variant: v, copies }) => ({
-          key: v.id,
-          title: [v.color?.name, v.size?.name].filter(Boolean).join(" · ") || productName,
-          sku: v.sku,
-          hint: `estoque: ${totalStockQuantity(v.stockPositions)}`,
-          copies,
-        }))}
-        onChange={(id, copies) => setCopiesOverride((prev) => ({ ...prev, [id]: clampLabelCopies(copies, 0) }))}
-      />
-
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        {sheet.map(({ variant: v }, index) => (
+        {variants.map((v) => (
           <ProductLabel
-            key={`${v.id}-${index}`}
+            key={v.id}
             productName={productName}
             colorName={v.color?.name}
             sizeName={v.size?.name}

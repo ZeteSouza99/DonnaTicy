@@ -8,7 +8,6 @@ import { useDebounce } from "@/hooks/use-debounce";
 import { ProductLabel } from "@/components/catalog/product-label";
 import { LoadingSpinner, EmptyState, ErrorMessage } from "@/components/ui/feedback";
 import { variantSalePrice } from "@/lib/money";
-import { clampLabelCopies, defaultCopiesForStock, MAX_LABEL_COPIES, totalStockQuantity } from "@/lib/label-copies";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -22,7 +21,6 @@ interface VariantRow {
   product: { id: string; code: string; name: string; basePrice: number | string };
   color: { name: string } | null;
   size: { name: string } | null;
-  stockPositions?: { locationId: string; quantity: number; reservedQty: number }[];
 }
 
 interface VariantsResponse {
@@ -73,14 +71,14 @@ export default function LabelsPage(): React.ReactNode {
     setSelected((prev) => {
       const next = { ...prev };
       if (next[variant.id]) delete next[variant.id];
-      else next[variant.id] = { variant, copies: defaultCopiesForStock(totalStockQuantity(variant.stockPositions)) };
+      else next[variant.id] = { variant, copies: 1 };
       return next;
     });
   };
 
   const setCopies = (id: string, copies: number): void => {
     setSelected((prev) =>
-      prev[id] ? { ...prev, [id]: { ...prev[id], copies: clampLabelCopies(copies, 1) } } : prev,
+      prev[id] ? { ...prev, [id]: { ...prev[id], copies: Math.max(1, Math.min(99, copies)) } } : prev,
     );
   };
 
@@ -88,9 +86,7 @@ export default function LabelsPage(): React.ReactNode {
     setSelected((prev) => {
       const next = { ...prev };
       for (const variant of results) {
-        if (variant.barcode && !next[variant.id]) {
-          next[variant.id] = { variant, copies: defaultCopiesForStock(totalStockQuantity(variant.stockPositions)) };
-        }
+        if (variant.barcode && !next[variant.id]) next[variant.id] = { variant, copies: 1 };
       }
       return next;
     });
@@ -213,7 +209,6 @@ export default function LabelsPage(): React.ReactNode {
                             {[variant.color?.name, variant.size?.name].filter(Boolean).join(" · ") || "—"}
                             {" · "}
                             <span className="font-mono">{variant.sku}</span>
-                            {` · ${totalStockQuantity(variant.stockPositions)} un.`}
                           </span>
                         </span>
                         <span className="font-mono text-xs text-gray-400">
@@ -252,7 +247,7 @@ export default function LabelsPage(): React.ReactNode {
                   <input
                     type="number"
                     min={1}
-                    max={MAX_LABEL_COPIES}
+                    max={99}
                     value={copies}
                     onChange={(e) => setCopies(variant.id, Number(e.target.value))}
                     className="w-16 rounded border border-gray-300 px-2 py-1 text-center text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"

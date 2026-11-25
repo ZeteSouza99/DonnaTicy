@@ -7,9 +7,7 @@ import { clientFetch } from "@/lib/client-fetch";
 import { LoadingSpinner } from "@/components/ui/feedback";
 import { MoneyInput } from "@/components/ui/money-input";
 import { ProductLabel } from "@/components/catalog/product-label";
-import { LabelCopiesList } from "@/components/catalog/label-copies-list";
 import { normalizeInternalCode } from "@/lib/barcode";
-import { clampLabelCopies, defaultLabelCopies, expandLabelCopies } from "@/lib/label-copies";
 
 // ---------------------------------------------------------------------------
 // Tipos
@@ -40,8 +38,6 @@ interface GeneratedLabel {
   colorName: string;
   sizeName: string;
   price: number;
-  quantity: number;
-  copies: number;
 }
 
 interface BatchImportResponse {
@@ -51,7 +47,7 @@ interface BatchImportResponse {
     productId: string;
     productName: string;
     basePrice: number;
-    variants: { id: string; sku: string; barcode: string; quantity?: number }[];
+    variants: { id: string; sku: string; barcode: string }[];
   }[];
 }
 
@@ -292,14 +288,13 @@ export default function NovoProdutoPage(): React.ReactNode {
     setError(null);
     setIsSubmitting(true);
     try {
-      const meta = new Map<string, { colorName: string; sizeName: string; quantity: number }>();
+      const meta = new Map<string, { colorName: string; sizeName: string }>();
       const rows = enabledCells.map(([key, cell]) => {
         const [colorId, sizeId] = key.split("|");
         const colorName = colors.find((c) => c.id === colorId)?.name ?? "";
         const sizeName = sizes.find((s) => s.id === sizeId)?.name ?? "";
         const sku = buildSku(product.internalDescription, colorName, sizeName);
-        const quantity = Math.max(0, Math.floor(Number(cell.quantity) || 0));
-        meta.set(sku, { colorName, sizeName, quantity });
+        meta.set(sku, { colorName, sizeName });
         return {
           code: sku,
           fiscalDescription: product.fiscalDescription,
@@ -307,7 +302,7 @@ export default function NovoProdutoPage(): React.ReactNode {
           colorId,
           sizeId,
           categoryId: product.categoryId,
-          quantity,
+          quantity: Number(cell.quantity) || 0,
           costUnit: Number(product.costUnit),
           priceSuggestion: product.priceSuggestion,
           supplierId: product.supplierId || undefined,
@@ -326,22 +321,18 @@ export default function NovoProdutoPage(): React.ReactNode {
         },
       });
 
-      const created = res.results.flatMap((r) =>
-        r.variants.map((v) => {
-          const info = meta.get(v.sku);
-          return {
+      setLabels(
+        res.results.flatMap((r) =>
+          r.variants.map((v) => ({
             sku: v.sku,
             barcode: v.barcode,
             productName: r.productName,
-            colorName: info?.colorName ?? "",
-            sizeName: info?.sizeName ?? "",
+            colorName: meta.get(v.sku)?.colorName ?? "",
+            sizeName: meta.get(v.sku)?.sizeName ?? "",
             price: r.basePrice,
-            quantity: v.quantity ?? info?.quantity ?? 0,
-          };
-        }),
+          })),
+        ),
       );
-      const copies = defaultLabelCopies(created.map((v) => v.quantity));
-      setLabels(created.map((v, i) => ({ ...v, copies: copies[i] })));
       setSuccess(`Produto cadastrado com ${rows.length} variante(s). Códigos de barras gerados.`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro ao cadastrar produto.");
@@ -379,13 +370,7 @@ export default function NovoProdutoPage(): React.ReactNode {
       )}
 
       {labels.length > 0 ? (
-        <LabelSheet
-          labels={labels}
-          onChangeCopies={(sku, copies) =>
-            setLabels((prev) => prev.map((l) => (l.sku === sku ? { ...l, copies: clampLabelCopies(copies, 0) } : l)))
-          }
-          onFinish={() => router.push("/dashboard/catalogo")}
-        />
+        <LabelSheet labels={labels} onFinish={() => router.push("/dashboard/catalogo")} />
       ) : step === 1 ? (
         <Step1
           product={product}
@@ -461,36 +446,25 @@ function Stepper({ step }: { step: 1 | 2 }): React.ReactNode {
 // Etiquetas geradas
 // ---------------------------------------------------------------------------
 
-function LabelSheet({
-  labels,
-  onChangeCopies,
-  onFinish,
-}: {
-  labels: GeneratedLabel[];
-  onChangeCopies: (sku: string, copies: number) => void;
-  onFinish: () => void;
-}): React.ReactNode {
-  const sheet = useMemo(() => expandLabelCopies(labels), [labels]);
-
+function LabelSheet({ labels, onFinish }: { labels: GeneratedLabel[]; onFinish: () => void }): React.ReactNode {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-white p-4 print:hidden">
         <div>
           <h2 className="flex items-center gap-2 text-lg font-semibold text-gray-900">
-            <BarcodeIcon size={18} /> Etiquetas geradas ({sheet.length})
+            <BarcodeIcon size={18} /> Etiquetas geradas ({labels.length})
           </h2>
           <p className="text-sm text-gray-500">
-            Uma etiqueta por peça cadastrada. Imprima e cole nas peças; no PDV, basta ler o código para lançar o item.
+            Imprima e cole nas peças. No PDV, basta ler o código para lançar o item.
           </p>
         </div>
         <div className="flex gap-2">
           <button
             type="button"
             onClick={() => window.print()}
-            disabled={sheet.length === 0}
-            className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
           >
-            <Printer size={16} /> Imprimir etiquetas ({sheet.length})
+            <Printer size={16} /> Imprimir etiquetas
           </button>
           <button
             type="button"
@@ -502,21 +476,10 @@ function LabelSheet({
         </div>
       </div>
 
-      <LabelCopiesList
-        items={labels.map((label) => ({
-          key: label.sku,
-          title: [label.colorName, label.sizeName].filter(Boolean).join(" · ") || label.productName,
-          sku: label.sku,
-          hint: `cadastradas: ${label.quantity}`,
-          copies: label.copies,
-        }))}
-        onChange={onChangeCopies}
-      />
-
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 print:grid-cols-4">
-        {sheet.map((label, index) => (
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+        {labels.map((label) => (
           <ProductLabel
-            key={`${label.sku}-${index}`}
+            key={label.sku}
             productName={label.productName}
             colorName={label.colorName}
             sizeName={label.sizeName}

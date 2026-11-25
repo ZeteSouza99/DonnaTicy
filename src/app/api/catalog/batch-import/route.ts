@@ -105,7 +105,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         productId: string;
         productName: string;
         basePrice: number;
-        variants: { id: string; sku: string; barcode: string; quantity: number }[];
+        variants: { id: string; sku: string; barcode: string }[];
       }[] = [];
       const takenBarcodes = new Set<string>();
       let barcodeOffset = 0;
@@ -137,7 +137,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           },
         });
 
-        const variantIds: { id: string; sku: string; barcode: string; quantity: number }[] = [];
+        const variantIds: { id: string; sku: string; barcode: string }[] = [];
         const seedBase = internalCodeToSeed(
           normalizeInternalCode(input.internalCode ?? "") || productCode,
         );
@@ -199,7 +199,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
               },
             });
           }
-          variantIds.push({ id: variant.id, sku: variant.sku, barcode, quantity: row.quantity });
+          variantIds.push({ id: variant.id, sku: variant.sku, barcode });
         }
         created.push({ productId: product.id, productName: name, basePrice: Number(product.basePrice), variants: variantIds });
       }
