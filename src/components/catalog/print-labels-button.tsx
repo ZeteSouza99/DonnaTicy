@@ -23,7 +23,7 @@ export function PrintLabelsButton({ labels, children, className, disabled }: Pri
       const via = await printProductLabels(labels);
       setStatus(via === "service"
         ? { ok: true, text: "Tira enviada à MP-4200 TH." }
-        : { ok: true, text: "Impressão pelo navegador. Para corte único por USB, instale o serviço 1.3.0 ou mais recente em Configurações → Impressão." });
+        : { ok: true, text: "Impressão pelo navegador. Para imprimir a tira por USB, baixe o instalador em Configurações → Impressão." });
     } catch (err) {
       setStatus({ ok: false, text: err instanceof Error ? err.message : "Falha ao imprimir as etiquetas." });
     } finally {

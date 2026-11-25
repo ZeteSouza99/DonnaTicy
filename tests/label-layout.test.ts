@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createRequire } from 'node:module';
-import { ean13Bits, expandLabels, renderProductLabelsHtml, type ProductLabelData } from '../print-service/label-layout';
+import { ean13Bits, expandLabels, labelStripRows, renderProductLabelsHtml, type ProductLabelData } from '../print-service/label-layout';
 import { encodeEan13 } from '../src/lib/barcode';
 
 const requireLocal = createRequire(import.meta.url);
@@ -111,6 +111,22 @@ describe('etiqueta de produto 80 mm', () => {
     expect(long).toContain('FINAL');
     expect(long).toContain('FORNECEDOR-123456789');
     expect(long).toMatch(/rotate\(90\)/);
+  });
+
+  it('dá destaque ao preço em uma única linha sem alongar demais a dupla', () => {
+    const item = { productName: 'REGATA TESTE', colorName: 'Preto', sizeName: 'M', barcode: '2010502040006', sku: 'REGATATESTE-PRET-M', copies: 2 };
+    for (const [price, formatted] of [[59.9, 'R$ 59,90'], [10999.99, 'R$ 10.999,99']] as const) {
+      const [{ svg, height }] = [...labelStripRows([{ ...item, price }])];
+      const texts = [...svg.matchAll(/<text\b[^>]*font-size="(\d+)"[^>]*>([^<]*)<\/text>/g)];
+      const name = texts.find(node => node[2] === item.productName)!;
+      const prices = texts.filter(node => node[2] === formatted);
+      expect(prices).toHaveLength(2);
+      const size = Number(prices[0][1]);
+      expect(size / Number(name[1])).toBeGreaterThanOrEqual(1.4);
+      expect(size * 0.62 * formatted.length).toBeLessThanOrEqual(260);
+      expect(height / 8).toBeGreaterThanOrEqual(36);
+      expect(height / 8).toBeLessThanOrEqual(39);
+    }
   });
 
   it('mantém o vão da tesoura livre quando a fonte usa glifos de largura dupla', async () => {

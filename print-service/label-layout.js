@@ -46,6 +46,7 @@ function ean13Bits(value) {
 const STRIP_WIDTH = 576
 const GAP = 24
 const CARD = (STRIP_WIDTH - GAP) / 2
+const TEXT_WIDTH = CARD - 16
 
 function textLines(value, limit) {
   const lines = []
@@ -82,15 +83,19 @@ function cardContent(label) {
   let y = 0
   const parts = []
   function text(value, size, bold = false) {
-    for (const line of textLines(value, Math.floor((CARD - 16) / (size * 0.62)))) {
+    for (const line of textLines(value, Math.floor(TEXT_WIDTH / (size * 0.62)))) {
       parts.push(`<text x="${CARD / 2}" y="${y + size}" font-size="${size}"${bold ? ' font-weight="bold"' : ''}>${escape(line)}</text>`)
       y += size + 3
     }
     y += 4
   }
   text(label.productName, 24, true)
-  if (variantText(label)) text(variantText(label), 20)
-  text(money(label.price), 29, true)
+  const variant = variantText(label)
+  if (variant) text(variant, 20, true)
+  const price = money(label.price)
+  const priceSize = Math.min(40, Math.max(24, Math.floor(TEXT_WIDTH / (price.length * 0.62))))
+  text(price, priceSize, true)
+  y += 4
   const ean = ean13Bits(label.barcode)
   const bits = ean ? '0'.repeat(11) + ean + '0'.repeat(10) : code128Bits(label.barcode)
   if (bits) {
@@ -103,7 +108,7 @@ function cardContent(label) {
     y += (rotate ? width : 80) + 2
   }
   if (label.barcode) text(label.barcode, 20)
-  text(label.sku, 19)
+  text(label.sku, 19, true)
   return { height: y, svg: parts.join('') }
 }
 
@@ -112,9 +117,10 @@ function* labelStripRows(labels) {
   for (let i = 0; i < copies.length; i += 2) {
     const cards = copies.slice(i, i + 2).map(cardContent)
     const inner = Math.max(...cards.map(c => c.height))
-    const height = inner + 40
+    const inset = 26
+    const height = inner + 2 * inset
     const contents = cards.map((c, column) => {
-      const top = 20 + Math.floor((inner - c.height) / 2)
+      const top = inset + Math.floor((inner - c.height) / 2)
       return `<g transform="translate(${column * (CARD + GAP)} 0)"><rect x="1" y="8" width="${CARD - 2}" height="${height - 16}" rx="12" fill="white" stroke="black" stroke-width="2"/><g transform="translate(0 ${top})">${c.svg}</g></g>`
     }).join('')
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${STRIP_WIDTH}" height="${height}" viewBox="0 0 ${STRIP_WIDTH} ${height}" font-family="Courier New, monospace" text-anchor="middle"><rect width="100%" height="100%" fill="white"/>${contents}</svg>`

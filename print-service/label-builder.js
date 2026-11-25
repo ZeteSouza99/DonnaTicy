@@ -3,6 +3,9 @@ const { money, code128Bits } = require('./receipt-layout')
 const { expandLabels, variantText, ean13Bits, labelStripRows, STRIP_WIDTH } = require('./label-layout')
 const sharp = require('sharp')
 
+// Inclui mais bordas suavizadas dos caracteres no bitmap de 1 bit. As barras já são preto/branco.
+const STRIP_INK_THRESHOLD = 180
+
 /** Etiquetas de 80 mm: uma por cópia, separadas por corte parcial. */
 function buildProductLabels(labels) {
   const esc = new EscPosBuilder()
@@ -36,7 +39,7 @@ async function buildLabelStrip(labels) {
       const lines = Math.min(64, height - y)
       const block = Buffer.alloc(stride * lines)
       for (let p = 0; p < STRIP_WIDTH * lines; p++) {
-        if (pixels[y * STRIP_WIDTH + p] < 160) block[p >> 3] |= 128 >> (p % 8)
+        if (pixels[y * STRIP_WIDTH + p] < STRIP_INK_THRESHOLD) block[p >> 3] |= 128 >> (p % 8)
       }
       esc.push(Buffer.from([29, 118, 48, 0, stride, 0, lines, 0])).push(block)
     }

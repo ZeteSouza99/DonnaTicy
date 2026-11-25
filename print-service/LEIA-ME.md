@@ -1,6 +1,6 @@
 # Impressao USB da Donna Ticy
 
-Versao 1.3.0: na bobina de 80 mm, imprime duas etiquetas por linha, com 3 mm livres no meio para a tesoura e um unico corte no fim do lote. A altura acompanha o conteudo. Se a quantidade for impar, a ultima etiqueta sai sozinha. Os recibos continuam no formato anterior. O servico usa a porta 15555.
+Versao 1.3.1: na bobina de 80 mm, imprime duas etiquetas por linha, com 3 mm livres no meio para a tesoura e um unico corte no fim do lote. A etiqueta tem mais espaco vertical, preco maior e texto mais escuro. As barras mantem a mesma largura. A altura acompanha o conteudo. Se a quantidade for impar, a ultima etiqueta sai sozinha. Os recibos continuam no formato anterior. O servico usa a porta 15555.
 
 No ERP, abra **Configuracoes > Impressao** e baixe o ZIP para Windows x64. Extraia o pacote e execute **INSTALAR.cmd** na conta do caixa. O instalador preserva a configuracao. Sem o servico atualizado, o site abre a tira no navegador; nesse modo o tamanho do papel e o corte dependem do driver.
 
@@ -54,6 +54,7 @@ Se a porta 15555 estiver ocupada por uma instalacao antiga, encerre essa instala
 - Servico online, sem papel: confira energia, USB, papel, fila pausada/offline e o Spooler do Windows. Confirme que o nome da fila corresponde a impressora termica correta.
 - Navegador sem conexao: permita acesso a rede local apenas para o site da Donna Ticy. A permissao pertence ao navegador e precisa ser concedida nele; o instalador nao a altera.
 - Impressao incorreta: confirme modo ESC/POS e bobina de 80 mm. Outros modelos dependem de compatibilidade com os comandos usados.
+- Impressao fraca tambem nos recibos: a secao "Impressao Fraca" do [manual da MP-4200 TH](https://baseg.com.br/wp-content/uploads/2021/05/MU-MP-4200-TH-v1.0.pdf#page=29) recomenda conferir a bobina e a densidade de impressao. O ERP nao altera a intensidade termica da impressora.
 - Antigo atalho `PDV Print Service`: remova somente apos confirmar que ele e da instalacao anterior da Donna Ticy. Pode pertencer a outro sistema.
 
 O servidor escuta apenas `127.0.0.1:15555` e aceita a origem configurada. Nao e preciso abrir porta no roteador nem criar regra de entrada no firewall.
