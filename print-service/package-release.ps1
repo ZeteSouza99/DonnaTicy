@@ -16,6 +16,7 @@ $payload = Join-Path $stage 'DonnaTicy-Impressao'
 [void][IO.Directory]::CreateDirectory($payload)
 $files = @(
     'server.js','escpos.js','receipt-builder.js','receipt-layout.js','receipt-layout.d.ts',
+    'label-builder.js','label-layout.js','label-layout.d.ts',
     'raw-printer.ps1','win-print.js','package.json','package-lock.json',
     'windows-common.ps1','setup.ps1','manage.ps1','LEIA-ME.md',
     'INSTALAR.cmd','INICIAR.cmd','REINICIAR.cmd','PARAR.cmd','DIAGNOSTICO.cmd','DESINSTALAR.cmd'

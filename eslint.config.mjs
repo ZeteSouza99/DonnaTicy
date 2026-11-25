@@ -17,6 +17,8 @@ const eslintConfig = defineConfig([
     ".vscode/**",
     // Serviço local de impressão: projeto Node/CommonJS separado, com dependências próprias.
     "print-service/**",
+    // Leitores de nota (pdf.js, Tesseract) copiados de node_modules pelo build.
+    "public/vendor/**",
   ]),
 ]);
 

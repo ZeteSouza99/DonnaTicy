@@ -2,11 +2,12 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { ArrowLeft, Save, Trash2, Printer, Barcode as BarcodeIcon, Loader2 } from "lucide-react";
+import { ArrowLeft, Save, Trash2, Barcode as BarcodeIcon, Loader2 } from "lucide-react";
 import { clientFetch } from "@/lib/client-fetch";
 import { LoadingSpinner, ErrorMessage } from "@/components/ui/feedback";
 import { MoneyInput } from "@/components/ui/money-input";
 import { ProductLabel } from "@/components/catalog/product-label";
+import { PrintLabelsButton } from "@/components/catalog/print-labels-button";
 import { variantSalePrice } from "@/lib/money";
 
 interface SelectOption {
@@ -348,13 +349,19 @@ function VariantBarcodes({ variants, productName, basePrice, isGenerating, onGen
               Gerar códigos
             </button>
           )}
-          <button
-            type="button"
-            onClick={() => window.print()}
-            className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+          <PrintLabelsButton
+            labels={variants.map((v) => ({
+              productName,
+              colorName: v.color?.name,
+              sizeName: v.size?.name,
+              price: variantSalePrice(basePrice, v.additionalCost),
+              barcode: v.barcode,
+              sku: v.sku,
+            }))}
+            className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
           >
-            <Printer size={16} /> Imprimir etiquetas
-          </button>
+            Imprimir etiquetas
+          </PrintLabelsButton>
         </div>
       </div>
 

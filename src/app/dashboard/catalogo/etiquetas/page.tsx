@@ -2,10 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Barcode as BarcodeIcon, Printer, Search, Trash2 } from "lucide-react";
+import { ArrowLeft, Barcode as BarcodeIcon, Search, Trash2 } from "lucide-react";
 import { clientFetch } from "@/lib/client-fetch";
 import { useDebounce } from "@/hooks/use-debounce";
 import { ProductLabel } from "@/components/catalog/product-label";
+import { PrintLabelsButton } from "@/components/catalog/print-labels-button";
 import { LoadingSpinner, EmptyState, ErrorMessage } from "@/components/ui/feedback";
 import { variantSalePrice } from "@/lib/money";
 
@@ -94,6 +95,20 @@ export default function LabelsPage(): React.ReactNode {
 
   const selectedList = useMemo(() => Object.values(selected), [selected]);
 
+  const labels = useMemo(
+    () =>
+      selectedList.map(({ variant, copies }) => ({
+        productName: variant.product.name,
+        colorName: variant.color?.name,
+        sizeName: variant.size?.name,
+        price: variantSalePrice(variant.product.basePrice, variant.additionalCost),
+        barcode: variant.barcode,
+        sku: variant.sku,
+        copies,
+      })),
+    [selectedList],
+  );
+
   /** Expande cada variante nas suas cópias, na ordem de seleção. */
   const sheet = useMemo(
     () =>
@@ -134,14 +149,12 @@ export default function LabelsPage(): React.ReactNode {
               <Trash2 size={16} /> Limpar seleção
             </button>
           )}
-          <button
-            type="button"
-            onClick={() => window.print()}
-            disabled={sheet.length === 0}
+          <PrintLabelsButton
+            labels={labels}
             className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            <Printer size={16} /> Imprimir ({sheet.length})
-          </button>
+            Imprimir ({sheet.length})
+          </PrintLabelsButton>
         </div>
       </div>
 

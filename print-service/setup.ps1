@@ -65,7 +65,7 @@ try {
     if ((Get-Service Spooler).Status -ne 'Running') { throw 'O Spooler de Impressao do Windows esta parado. Inicie esse servico e execute o instalador novamente.' }
 
     Write-Host '[3/5] Preparando a versao em pasta propria...'
-    $releaseId = 'v111-' + [Guid]::NewGuid().ToString('N')
+    $releaseId = 'v' + ($manifest.version -replace '\D', '') + '-' + [Guid]::NewGuid().ToString('N')
     $release = Assert-PrintChildPath $root (Join-Path $root "releases\$releaseId")
     [void][IO.Directory]::CreateDirectory($release)
     foreach ($entry in $manifest.files) {
