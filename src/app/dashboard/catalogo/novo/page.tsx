@@ -2,12 +2,13 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, ArrowRight, Loader2, Check, X, Plus, Save, Printer, Barcode as BarcodeIcon } from "lucide-react";
+import { ArrowLeft, ArrowRight, Loader2, Check, X, Plus, Save, Barcode as BarcodeIcon } from "lucide-react";
 import { clientFetch } from "@/lib/client-fetch";
 import { LoadingSpinner } from "@/components/ui/feedback";
 import { MoneyInput } from "@/components/ui/money-input";
 import { ProductLabel } from "@/components/catalog/product-label";
 import { LabelCopiesList } from "@/components/catalog/label-copies-list";
+import { PrintLabelsButton } from "@/components/catalog/print-labels-button";
 import { normalizeInternalCode } from "@/lib/barcode";
 import { clampLabelCopies, defaultLabelCopies, expandLabelCopies } from "@/lib/label-copies";
 
@@ -471,6 +472,7 @@ function LabelSheet({
   onFinish: () => void;
 }): React.ReactNode {
   const sheet = useMemo(() => expandLabelCopies(labels), [labels]);
+  const printableLabels = useMemo(() => labels.filter((label) => label.copies > 0), [labels]);
 
   return (
     <div className="space-y-4">
@@ -484,14 +486,13 @@ function LabelSheet({
           </p>
         </div>
         <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() => window.print()}
+          <PrintLabelsButton
+            labels={printableLabels}
             disabled={sheet.length === 0}
             className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            <Printer size={16} /> Imprimir etiquetas ({sheet.length})
-          </button>
+            Imprimir etiquetas ({sheet.length})
+          </PrintLabelsButton>
           <button
             type="button"
             onClick={onFinish}

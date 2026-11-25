@@ -1,5 +1,6 @@
 const iconv = require('iconv-lite')
 const { clean, code128Bits } = require('./receipt-layout')
+const { ean13Bits } = require('./label-layout')
 
 const CMD = {
   INIT: Buffer.from([0x1B, 0x40]),
@@ -87,6 +88,13 @@ class EscPosBuilder {
     const data = Buffer.from('{B' + value.replace(/\{/g, '{{'), 'ascii')
     return this.push(Buffer.from([0x1d, 0x48, 0, 0x1d, 0x68, 72, 0x1d, 0x77, 2, 0x1d, 0x6b, 73, data.length]))
       .push(data).newline()
+  }
+
+  /** EAN-13 com os dígitos impressos abaixo; a impressora recalcula o DV a partir dos 12 primeiros. */
+  barcodeEan13(value) {
+    if (!ean13Bits(value)) return this
+    return this.push(Buffer.from([0x1d, 0x48, 2, 0x1d, 0x66, 0, 0x1d, 0x68, 80, 0x1d, 0x77, 3, 0x1d, 0x6b, 67, 12]))
+      .push(Buffer.from(value.slice(0, 12), 'ascii')).newline()
   }
 
   centerLine(str) {

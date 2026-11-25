@@ -2,12 +2,13 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { ArrowLeft, Save, Trash2, Printer, Barcode as BarcodeIcon, Loader2 } from "lucide-react";
+import { ArrowLeft, Save, Trash2, Barcode as BarcodeIcon, Loader2 } from "lucide-react";
 import { clientFetch } from "@/lib/client-fetch";
 import { LoadingSpinner, ErrorMessage } from "@/components/ui/feedback";
 import { MoneyInput } from "@/components/ui/money-input";
 import { ProductLabel } from "@/components/catalog/product-label";
 import { LabelCopiesList } from "@/components/catalog/label-copies-list";
+import { PrintLabelsButton } from "@/components/catalog/print-labels-button";
 import { clampLabelCopies, defaultLabelCopies, expandLabelCopies, totalStockQuantity } from "@/lib/label-copies";
 import { variantSalePrice } from "@/lib/money";
 
@@ -331,6 +332,21 @@ function VariantBarcodes({ variants, productName, basePrice, isGenerating, onGen
     return variants.map((v, i) => ({ variant: v, copies: copiesOverride[v.id] ?? initial[i] }));
   }, [variants, copiesOverride]);
   const sheet = useMemo(() => expandLabelCopies(items), [items]);
+  const printableLabels = useMemo(
+    () =>
+      items
+        .filter(({ copies }) => copies > 0)
+        .map(({ variant: v, copies }) => ({
+          productName,
+          colorName: v.color?.name,
+          sizeName: v.size?.name,
+          price: variantSalePrice(basePrice, v.additionalCost),
+          barcode: v.barcode,
+          sku: v.sku,
+          copies,
+        })),
+    [items, productName, basePrice],
+  );
 
   if (variants.length === 0) return null;
   const missing = variants.filter((v) => !v.barcode).length;
@@ -358,14 +374,13 @@ function VariantBarcodes({ variants, productName, basePrice, isGenerating, onGen
               Gerar códigos
             </button>
           )}
-          <button
-            type="button"
-            onClick={() => window.print()}
+          <PrintLabelsButton
+            labels={printableLabels}
             disabled={sheet.length === 0}
             className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            <Printer size={16} /> Imprimir etiquetas ({sheet.length})
-          </button>
+            Imprimir etiquetas ({sheet.length})
+          </PrintLabelsButton>
         </div>
       </div>
 
