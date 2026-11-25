@@ -6,8 +6,10 @@ import { ArrowLeft, Barcode as BarcodeIcon, Printer, Search, Trash2 } from "luci
 import { clientFetch } from "@/lib/client-fetch";
 import { useDebounce } from "@/hooks/use-debounce";
 import { ProductLabel } from "@/components/catalog/product-label";
+import { LabelPrintSheet, printLabelSheet } from "@/components/catalog/label-print-sheet";
 import { LoadingSpinner, EmptyState, ErrorMessage } from "@/components/ui/feedback";
 import { variantSalePrice } from "@/lib/money";
+import { clampLabelCopies, defaultCopiesForStock, MAX_LABEL_COPIES, totalStockQuantity } from "@/lib/label-copies";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -21,6 +23,7 @@ interface VariantRow {
   product: { id: string; code: string; name: string; basePrice: number | string };
   color: { name: string } | null;
   size: { name: string } | null;
+  stockPositions?: { locationId: string; quantity: number; reservedQty: number }[];
 }
 
 interface VariantsResponse {
@@ -71,14 +74,14 @@ export default function LabelsPage(): React.ReactNode {
     setSelected((prev) => {
       const next = { ...prev };
       if (next[variant.id]) delete next[variant.id];
-      else next[variant.id] = { variant, copies: 1 };
+      else next[variant.id] = { variant, copies: defaultCopiesForStock(totalStockQuantity(variant.stockPositions)) };
       return next;
     });
   };
 
   const setCopies = (id: string, copies: number): void => {
     setSelected((prev) =>
-      prev[id] ? { ...prev, [id]: { ...prev[id], copies: Math.max(1, Math.min(99, copies)) } } : prev,
+      prev[id] ? { ...prev, [id]: { ...prev[id], copies: clampLabelCopies(copies, 1) } } : prev,
     );
   };
 
@@ -86,7 +89,9 @@ export default function LabelsPage(): React.ReactNode {
     setSelected((prev) => {
       const next = { ...prev };
       for (const variant of results) {
-        if (variant.barcode && !next[variant.id]) next[variant.id] = { variant, copies: 1 };
+        if (variant.barcode && !next[variant.id]) {
+          next[variant.id] = { variant, copies: defaultCopiesForStock(totalStockQuantity(variant.stockPositions)) };
+        }
       }
       return next;
     });
@@ -136,7 +141,7 @@ export default function LabelsPage(): React.ReactNode {
           )}
           <button
             type="button"
-            onClick={() => window.print()}
+            onClick={printLabelSheet}
             disabled={sheet.length === 0}
             className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
@@ -209,6 +214,7 @@ export default function LabelsPage(): React.ReactNode {
                             {[variant.color?.name, variant.size?.name].filter(Boolean).join(" · ") || "—"}
                             {" · "}
                             <span className="font-mono">{variant.sku}</span>
+                            {` · ${totalStockQuantity(variant.stockPositions)} un.`}
                           </span>
                         </span>
                         <span className="font-mono text-xs text-gray-400">
@@ -247,7 +253,7 @@ export default function LabelsPage(): React.ReactNode {
                   <input
                     type="number"
                     min={1}
-                    max={99}
+                    max={MAX_LABEL_COPIES}
                     value={copies}
                     onChange={(e) => setCopies(variant.id, Number(e.target.value))}
                     className="w-16 rounded border border-gray-300 px-2 py-1 text-center text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
@@ -269,8 +275,20 @@ export default function LabelsPage(): React.ReactNode {
       </div>
 
       {/* Folha de impressão */}
+      <LabelPrintSheet
+        labels={sheet.map(({ variant, key }) => ({
+          key,
+          productName: variant.product.name,
+          colorName: variant.color?.name,
+          sizeName: variant.size?.name,
+          price: variantSalePrice(variant.product.basePrice, variant.additionalCost),
+          barcode: variant.barcode,
+          sku: variant.sku,
+        }))}
+      />
+
       {sheet.length > 0 && (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 print:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
           {sheet.map(({ variant, key }) => (
             <ProductLabel
               key={key}

@@ -29,5 +29,6 @@ describe("cadastro de produto em lote", () => {
     const body = await response.json();
     expect(body.results).toHaveLength(1);
     expect(body.results[0]).toMatchObject({ productName: "VESTIDO MIDI", basePrice: 189.9 });
+    expect(body.results[0].variants[0]).toMatchObject({ sku: "VESTIDO-PRET-M", quantity: 2 });
   });
 });
