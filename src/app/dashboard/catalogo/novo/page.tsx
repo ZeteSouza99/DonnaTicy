@@ -9,6 +9,12 @@ import { MoneyInput } from "@/components/ui/money-input";
 import { ProductLabel } from "@/components/catalog/product-label";
 import { PrintLabelsButton } from "@/components/catalog/print-labels-button";
 import { normalizeInternalCode } from "@/lib/barcode";
+import {
+  clampLabelCopies,
+  defaultLabelCopies,
+  MAX_LABEL_COPIES,
+  prepareLabelsForPrint,
+} from "@/lib/label-copies";
 
 // ---------------------------------------------------------------------------
 // Tipos
@@ -39,6 +45,8 @@ interface GeneratedLabel {
   colorName: string;
   sizeName: string;
   price: number;
+  quantity: number;
+  copies: number;
 }
 
 interface BatchImportResponse {
@@ -48,7 +56,7 @@ interface BatchImportResponse {
     productId: string;
     productName: string;
     basePrice: number;
-    variants: { id: string; sku: string; barcode: string }[];
+    variants: { id: string; sku: string; barcode: string; quantity?: number }[];
   }[];
 }
 
@@ -289,13 +297,14 @@ export default function NovoProdutoPage(): React.ReactNode {
     setError(null);
     setIsSubmitting(true);
     try {
-      const meta = new Map<string, { colorName: string; sizeName: string }>();
+      const meta = new Map<string, { colorName: string; sizeName: string; quantity: number }>();
       const rows = enabledCells.map(([key, cell]) => {
         const [colorId, sizeId] = key.split("|");
         const colorName = colors.find((c) => c.id === colorId)?.name ?? "";
         const sizeName = sizes.find((s) => s.id === sizeId)?.name ?? "";
         const sku = buildSku(product.internalDescription, colorName, sizeName);
-        meta.set(sku, { colorName, sizeName });
+        const quantity = Math.max(0, Math.floor(Number(cell.quantity) || 0));
+        meta.set(sku, { colorName, sizeName, quantity });
         return {
           code: sku,
           fiscalDescription: product.fiscalDescription,
@@ -303,7 +312,7 @@ export default function NovoProdutoPage(): React.ReactNode {
           colorId,
           sizeId,
           categoryId: product.categoryId,
-          quantity: Number(cell.quantity) || 0,
+          quantity,
           costUnit: Number(product.costUnit),
           priceSuggestion: product.priceSuggestion,
           supplierId: product.supplierId || undefined,
@@ -322,18 +331,22 @@ export default function NovoProdutoPage(): React.ReactNode {
         },
       });
 
-      setLabels(
-        res.results.flatMap((r) =>
-          r.variants.map((v) => ({
+      const createdVariants = res.results.flatMap((r) =>
+        r.variants.map((v) => {
+          const info = meta.get(v.sku);
+          return {
             sku: v.sku,
             barcode: v.barcode,
             productName: r.productName,
-            colorName: meta.get(v.sku)?.colorName ?? "",
-            sizeName: meta.get(v.sku)?.sizeName ?? "",
+            colorName: info?.colorName ?? "",
+            sizeName: info?.sizeName ?? "",
             price: r.basePrice,
-          })),
-        ),
+            quantity: v.quantity ?? info?.quantity ?? 0,
+          };
+        }),
       );
+      const initialCopies = defaultLabelCopies(createdVariants.map((v) => v.quantity));
+      setLabels(createdVariants.map((v, index) => ({ ...v, copies: initialCopies[index] })));
       setSuccess(`Produto cadastrado com ${rows.length} variante(s). Códigos de barras gerados.`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro ao cadastrar produto.");
@@ -371,7 +384,15 @@ export default function NovoProdutoPage(): React.ReactNode {
       )}
 
       {labels.length > 0 ? (
-        <LabelSheet labels={labels} onFinish={() => router.push("/dashboard/catalogo")} />
+        <LabelSheet
+          labels={labels}
+          onChangeCopies={(sku, copies) =>
+            setLabels((prev) =>
+              prev.map((item) => (item.sku === sku ? { ...item, copies: clampLabelCopies(copies, 0) } : item)),
+            )
+          }
+          onFinish={() => router.push("/dashboard/catalogo")}
+        />
       ) : step === 1 ? (
         <Step1
           product={product}
@@ -447,24 +468,38 @@ function Stepper({ step }: { step: 1 | 2 }): React.ReactNode {
 // Etiquetas geradas
 // ---------------------------------------------------------------------------
 
-function LabelSheet({ labels, onFinish }: { labels: GeneratedLabel[]; onFinish: () => void }): React.ReactNode {
+function LabelSheet({
+  labels,
+  onChangeCopies,
+  onFinish,
+}: {
+  labels: GeneratedLabel[];
+  onChangeCopies: (sku: string, copies: number) => void;
+  onFinish: () => void;
+}): React.ReactNode {
+  const printableLabels = useMemo(() => prepareLabelsForPrint(labels), [labels]);
+  const totalLabels = useMemo(
+    () => printableLabels.reduce((sum, item) => sum + (item.copies ?? 1), 0),
+    [printableLabels],
+  );
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-white p-4 print:hidden">
         <div>
           <h2 className="flex items-center gap-2 text-lg font-semibold text-gray-900">
-            <BarcodeIcon size={18} /> Etiquetas geradas ({labels.length})
+            <BarcodeIcon size={18} /> Etiquetas geradas ({totalLabels})
           </h2>
           <p className="text-sm text-gray-500">
-            Imprima e cole nas peças. No PDV, basta ler o código para lançar o item.
+            Quantidade preenchida conforme o cadastro ({labels.length} variante(s)). Ajuste as cópias abaixo se precisar.
           </p>
         </div>
         <div className="flex gap-2">
           <PrintLabelsButton
-            labels={labels}
+            labels={printableLabels}
             className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50"
           >
-            Imprimir etiquetas
+            Imprimir etiquetas ({totalLabels})
           </PrintLabelsButton>
           <button
             type="button"
@@ -478,15 +513,33 @@ function LabelSheet({ labels, onFinish }: { labels: GeneratedLabel[]; onFinish: 
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
         {labels.map((label) => (
-          <ProductLabel
-            key={label.sku}
-            productName={label.productName}
-            colorName={label.colorName}
-            sizeName={label.sizeName}
-            price={label.price}
-            barcode={label.barcode}
-            sku={label.sku}
-          />
+          <div key={label.sku} className={`flex flex-col gap-1.5 ${label.copies === 0 ? "opacity-50" : ""}`}>
+            <ProductLabel
+              productName={label.productName}
+              colorName={label.colorName}
+              sizeName={label.sizeName}
+              price={label.price}
+              barcode={label.barcode}
+              sku={label.sku}
+            />
+            <label className="flex items-center justify-between gap-2 rounded-lg border bg-gray-50 px-3 py-1.5 text-xs text-gray-700 print:hidden">
+              <span>
+                Cópias
+                {label.quantity > MAX_LABEL_COPIES && (
+                  <span className="ml-1 text-amber-700">(cad.: {label.quantity})</span>
+                )}
+              </span>
+              <input
+                type="number"
+                min={0}
+                max={MAX_LABEL_COPIES}
+                value={label.copies}
+                onChange={(e) => onChangeCopies(label.sku, Number(e.target.value))}
+                className="w-16 rounded border border-gray-300 bg-white px-2 py-0.5 text-center text-xs font-medium text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                aria-label={`Cópias de ${label.sku}`}
+              />
+            </label>
+          </div>
         ))}
       </div>
     </div>

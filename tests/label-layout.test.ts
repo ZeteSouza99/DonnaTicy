@@ -2,6 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { createRequire } from 'node:module';
 import { ean13Bits, expandLabels, renderProductLabelsHtml, type ProductLabelData } from '../print-service/label-layout';
 import { encodeEan13 } from '../src/lib/barcode';
+import {
+  defaultCopiesForStock,
+  defaultLabelCopies,
+  prepareLabelsForPrint,
+  totalStockQuantity,
+} from '../src/lib/label-copies';
 
 const requireLocal = createRequire(import.meta.url);
 const { buildProductLabels } = requireLocal('../print-service/label-builder') as {
@@ -67,5 +73,39 @@ describe('etiqueta de produto 80 mm', () => {
     expect(html.match(/<svg/g)).toHaveLength(2);
     expect(html).not.toContain('<img');
     expect(html).toContain('&lt;img');
+  });
+});
+
+describe('cópias de etiquetas conforme quantidade cadastrada', () => {
+  it('usa a quantidade cadastrada de cada variante e omite tamanhos zerados quando há estoque', () => {
+    expect(defaultLabelCopies([3])).toEqual([3]);
+    expect(defaultLabelCopies([0, 3, 2])).toEqual([0, 3, 2]);
+    expect(defaultLabelCopies([150])).toEqual([99]);
+  });
+
+  it('mantém 1 cópia por variante quando nenhuma tem quantidade cadastrada', () => {
+    expect(defaultLabelCopies([0, 0])).toEqual([1, 1]);
+  });
+
+  it('soma estoque entre posições e aplica fallback para seleção avulsa', () => {
+    expect(totalStockQuantity([{ quantity: 2 }, { quantity: 1 }])).toBe(3);
+    expect(totalStockQuantity([])).toBe(0);
+    expect(defaultCopiesForStock(3)).toBe(3);
+    expect(defaultCopiesForStock(0)).toBe(1);
+    expect(defaultCopiesForStock(120)).toBe(99);
+  });
+
+  it('prepara apenas etiquetas com cópias > 0 prontas para expandLabels', () => {
+    const ready = prepareLabelsForPrint([
+      { ...legging, sku: 'CAMISA-AZUL-P', sizeName: 'P', copies: 0 },
+      { ...legging, sku: 'CAMISA-AZUL-M', sizeName: 'M', copies: 3 },
+    ]);
+    expect(ready).toHaveLength(1);
+    expect(ready[0]).toMatchObject({ sku: 'CAMISA-AZUL-M', copies: 3 });
+    expect(expandLabels(ready).map((l) => l.sku)).toEqual([
+      'CAMISA-AZUL-M',
+      'CAMISA-AZUL-M',
+      'CAMISA-AZUL-M',
+    ]);
   });
 });
