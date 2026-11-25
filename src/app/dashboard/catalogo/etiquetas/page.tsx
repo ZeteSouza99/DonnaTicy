@@ -5,8 +5,9 @@ import Link from "next/link";
 import { ArrowLeft, Barcode as BarcodeIcon, Printer, Search, Trash2 } from "lucide-react";
 import { clientFetch } from "@/lib/client-fetch";
 import { useDebounce } from "@/hooks/use-debounce";
-import { Barcode } from "@/components/ui/barcode";
+import { ProductLabel } from "@/components/catalog/product-label";
 import { LoadingSpinner, EmptyState, ErrorMessage } from "@/components/ui/feedback";
+import { variantSalePrice } from "@/lib/money";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -16,7 +17,8 @@ interface VariantRow {
   id: string;
   sku: string;
   barcode: string | null;
-  product: { id: string; code: string; name: string };
+  additionalCost: number | string;
+  product: { id: string; code: string; name: string; basePrice: number | string };
   color: { name: string } | null;
   size: { name: string } | null;
 }
@@ -270,19 +272,15 @@ export default function LabelsPage(): React.ReactNode {
       {sheet.length > 0 && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 print:grid-cols-4">
           {sheet.map(({ variant, key }) => (
-            <div
+            <ProductLabel
               key={key}
-              className="flex break-inside-avoid flex-col items-center gap-1 rounded-lg border bg-white p-3 text-center"
-            >
-              <span className="line-clamp-2 text-xs font-semibold text-gray-900">
-                {variant.product.name}
-              </span>
-              <span className="text-[11px] text-gray-500">
-                {[variant.color?.name, variant.size?.name].filter(Boolean).join(" · ") || "—"}
-              </span>
-              <Barcode value={variant.barcode ?? ""} moduleWidth={1.6} height={40} />
-              <span className="font-mono text-[10px] text-gray-500">{variant.sku}</span>
-            </div>
+              productName={variant.product.name}
+              colorName={variant.color?.name}
+              sizeName={variant.size?.name}
+              price={variantSalePrice(variant.product.basePrice, variant.additionalCost)}
+              barcode={variant.barcode}
+              sku={variant.sku}
+            />
           ))}
         </div>
       )}

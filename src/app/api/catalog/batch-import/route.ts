@@ -104,6 +104,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       const created: {
         productId: string;
         productName: string;
+        basePrice: number;
         variants: { id: string; sku: string; barcode: string }[];
       }[] = [];
       const takenBarcodes = new Set<string>();
@@ -200,7 +201,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           }
           variantIds.push({ id: variant.id, sku: variant.sku, barcode });
         }
-        created.push({ productId: product.id, productName: name, variants: variantIds });
+        created.push({ productId: product.id, productName: name, basePrice: Number(product.basePrice), variants: variantIds });
       }
       return created;
     });

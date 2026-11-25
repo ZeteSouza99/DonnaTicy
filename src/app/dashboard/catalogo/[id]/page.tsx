@@ -6,7 +6,8 @@ import { ArrowLeft, Save, Trash2, Printer, Barcode as BarcodeIcon, Loader2 } fro
 import { clientFetch } from "@/lib/client-fetch";
 import { LoadingSpinner, ErrorMessage } from "@/components/ui/feedback";
 import { MoneyInput } from "@/components/ui/money-input";
-import { Barcode } from "@/components/ui/barcode";
+import { ProductLabel } from "@/components/catalog/product-label";
+import { variantSalePrice } from "@/lib/money";
 
 interface SelectOption {
   id: string;
@@ -17,6 +18,7 @@ interface Variant {
   id: string;
   sku: string;
   barcode: string | null;
+  additionalCost: number | string;
   color?: { name: string; hexValue?: string | null };
   size?: { name: string };
 }
@@ -299,6 +301,7 @@ export default function ProdutoDetalhePage(): React.ReactNode {
       <VariantBarcodes
         variants={product?.variants ?? []}
         productName={product?.name ?? ""}
+        basePrice={product?.basePrice ?? 0}
         isGenerating={isGeneratingBarcodes}
         onGenerate={handleGenerateBarcodes}
       />
@@ -313,11 +316,12 @@ export default function ProdutoDetalhePage(): React.ReactNode {
 interface VariantBarcodesProps {
   variants: Variant[];
   productName: string;
+  basePrice: number | string;
   isGenerating: boolean;
   onGenerate: () => void;
 }
 
-function VariantBarcodes({ variants, productName, isGenerating, onGenerate }: VariantBarcodesProps): React.ReactNode {
+function VariantBarcodes({ variants, productName, basePrice, isGenerating, onGenerate }: VariantBarcodesProps): React.ReactNode {
   if (variants.length === 0) return null;
   const missing = variants.filter((v) => !v.barcode).length;
 
@@ -356,18 +360,15 @@ function VariantBarcodes({ variants, productName, isGenerating, onGenerate }: Va
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         {variants.map((v) => (
-          <div key={v.id} className="flex flex-col items-center gap-1 rounded-lg border p-3 text-center">
-            <span className="line-clamp-2 text-xs font-semibold text-gray-900">{productName}</span>
-            <span className="text-[11px] text-gray-500">
-              {v.color?.name ?? "—"} · {v.size?.name ?? "—"}
-            </span>
-            {v.barcode ? (
-              <Barcode value={v.barcode} moduleWidth={1.6} height={40} />
-            ) : (
-              <span className="py-4 text-xs text-gray-400">sem código</span>
-            )}
-            <span className="font-mono text-[10px] text-gray-500">{v.sku}</span>
-          </div>
+          <ProductLabel
+            key={v.id}
+            productName={productName}
+            colorName={v.color?.name}
+            sizeName={v.size?.name}
+            price={variantSalePrice(basePrice, v.additionalCost)}
+            barcode={v.barcode}
+            sku={v.sku}
+          />
         ))}
       </div>
     </section>

@@ -6,7 +6,7 @@ import { ArrowLeft, ArrowRight, Loader2, Check, X, Plus, Save, Printer, Barcode 
 import { clientFetch } from "@/lib/client-fetch";
 import { LoadingSpinner } from "@/components/ui/feedback";
 import { MoneyInput } from "@/components/ui/money-input";
-import { Barcode } from "@/components/ui/barcode";
+import { ProductLabel } from "@/components/catalog/product-label";
 import { normalizeInternalCode } from "@/lib/barcode";
 
 // ---------------------------------------------------------------------------
@@ -37,6 +37,7 @@ interface GeneratedLabel {
   productName: string;
   colorName: string;
   sizeName: string;
+  price: number;
 }
 
 interface BatchImportResponse {
@@ -45,6 +46,7 @@ interface BatchImportResponse {
   results: {
     productId: string;
     productName: string;
+    basePrice: number;
     variants: { id: string; sku: string; barcode: string }[];
   }[];
 }
@@ -327,6 +329,7 @@ export default function NovoProdutoPage(): React.ReactNode {
             productName: r.productName,
             colorName: meta.get(v.sku)?.colorName ?? "",
             sizeName: meta.get(v.sku)?.sizeName ?? "",
+            price: r.basePrice,
           })),
         ),
       );
@@ -475,14 +478,15 @@ function LabelSheet({ labels, onFinish }: { labels: GeneratedLabel[]; onFinish: 
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
         {labels.map((label) => (
-          <div key={label.sku} className="flex flex-col items-center gap-1 rounded-lg border bg-white p-3 text-center">
-            <span className="line-clamp-2 text-xs font-semibold text-gray-900">{label.productName}</span>
-            <span className="text-[11px] text-gray-500">
-              {label.colorName} · {label.sizeName}
-            </span>
-            <Barcode value={label.barcode} moduleWidth={1.6} height={40} />
-            <span className="font-mono text-[10px] text-gray-500">{label.sku}</span>
-          </div>
+          <ProductLabel
+            key={label.sku}
+            productName={label.productName}
+            colorName={label.colorName}
+            sizeName={label.sizeName}
+            price={label.price}
+            barcode={label.barcode}
+            sku={label.sku}
+          />
         ))}
       </div>
     </div>
