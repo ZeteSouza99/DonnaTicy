@@ -1,5 +1,5 @@
 // Etiqueta de produto compartilhada pelo navegador e pelo serviço ESC/POS. Sem APIs de Node.
-const { money, clean } = require('./receipt-layout')
+const { money, clean, code128Bits } = require('./receipt-layout')
 
 const MAX_COPIES = 99
 const MAX_LABELS = 500
@@ -10,9 +10,12 @@ function expandLabels(labels) {
   if (!Array.isArray(labels) || labels.length === 0) throw new Error('Nenhuma etiqueta para imprimir')
   const result = []
   for (const label of labels) {
+    if (!label || typeof label !== 'object' || Array.isArray(label)) throw new Error('Etiqueta inválida')
     const copies = label.copies ?? 1
     if (!Number.isInteger(copies) || copies < 1 || copies > MAX_COPIES) throw new Error(`Cópias devem ficar entre 1 e ${MAX_COPIES}`)
-    if (!clean(label.productName) || !clean(label.sku)) throw new Error('Etiqueta sem nome ou SKU')
+    if (typeof label.productName !== 'string' || !clean(label.productName) ||
+        typeof label.sku !== 'string' || !clean(label.sku)) throw new Error('Etiqueta sem nome ou SKU')
+    if ([label.colorName, label.sizeName, label.barcode].some(v => v != null && typeof v !== 'string')) throw new Error('Variante ou código de barras inválido')
     if (typeof label.price !== 'number' || !Number.isFinite(label.price) || label.price < 0) throw new Error('Preço inválido na etiqueta')
     for (let i = 0; i < copies; i++) result.push(label)
     if (result.length > MAX_LABELS) throw new Error(`Limite de ${MAX_LABELS} etiquetas por impressão`)
@@ -39,32 +42,88 @@ function ean13Bits(value) {
   return `101${left}01010${d.slice(7).map((digit) => R[digit]).join('')}101`
 }
 
-function barcodeSvg(value) {
-  const bits = ean13Bits(value)
-  if (!bits) return ''
-  const bars = []
-  for (let x = 0; x < bits.length; x++) {
-    if (bits[x] === '1') bars.push(`<rect x="${x}" y="0" width="1" height="40"/>`)
+// A cabeça imprime 8 pontos/mm. Sobram 72 mm úteis na bobina de 80 mm.
+const STRIP_WIDTH = 576
+const GAP = 24
+const CARD = (STRIP_WIDTH - GAP) / 2
+
+function textLines(value, limit) {
+  const lines = []
+  let line = ''
+  let used = 0
+  const cells = char => char.codePointAt(0) > 255 ? 2 : 1
+  for (const word of clean(value).split(/\s+/)) {
+    const width = Array.from(word).reduce((sum, ch) => sum + cells(ch), 0)
+    if (line) {
+      if (used + 1 + width > limit) {
+        lines.push(line)
+        line = ''
+        used = 0
+      } else {
+        line += ' '
+        used++
+      }
+    }
+    for (const ch of word) {
+      if (used + cells(ch) > limit) {
+        lines.push(line)
+        line = ''
+        used = 0
+      }
+      line += ch
+      used += cells(ch)
+    }
   }
-  return `<svg xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Código de barras ${value}" viewBox="0 0 95 40" width="36mm" height="12mm" preserveAspectRatio="none" style="display:block;shape-rendering:crispEdges"><rect width="95" height="40" fill="white"/><g fill="black">${bars.join('')}</g></svg>`
+  if (line) lines.push(line)
+  return lines
 }
 
-/** Uma página de 80 x 50 mm por cópia; o CSS de impressão define o tamanho da página. */
+function cardContent(label) {
+  let y = 0
+  const parts = []
+  function text(value, size, bold = false) {
+    for (const line of textLines(value, Math.floor((CARD - 16) / (size * 0.62)))) {
+      parts.push(`<text x="${CARD / 2}" y="${y + size}" font-size="${size}"${bold ? ' font-weight="bold"' : ''}>${escape(line)}</text>`)
+      y += size + 3
+    }
+    y += 4
+  }
+  text(label.productName, 24, true)
+  if (variantText(label)) text(variantText(label), 20)
+  text(money(label.price), 29, true)
+  const ean = ean13Bits(label.barcode)
+  const bits = ean ? '0'.repeat(11) + ean + '0'.repeat(10) : code128Bits(label.barcode)
+  if (bits) {
+    const width = bits.length * 2
+    // Girar um Code 128 largo preserva os módulos de dois pontos e as margens do leitor.
+    const rotate = width > CARD - 8
+    const x = rotate ? CARD / 2 + 40 : Math.floor((CARD - width) / 2)
+    const bars = [...bits.matchAll(/1+/g)].map(m => `M${m.index * 2} 0h${m[0].length * 2}v80h-${m[0].length * 2}z`).join(' ')
+    parts.push(`<path shape-rendering="crispEdges" transform="translate(${x} ${y})${rotate ? ' rotate(90)' : ''}" d="${bars}"/>`)
+    y += (rotate ? width : 80) + 2
+  }
+  if (label.barcode) text(label.barcode, 20)
+  text(label.sku, 19)
+  return { height: y, svg: parts.join('') }
+}
+
+function* labelStripRows(labels) {
+  const copies = expandLabels(labels)
+  for (let i = 0; i < copies.length; i += 2) {
+    const cards = copies.slice(i, i + 2).map(cardContent)
+    const inner = Math.max(...cards.map(c => c.height))
+    const height = inner + 40
+    const contents = cards.map((c, column) => {
+      const top = 20 + Math.floor((inner - c.height) / 2)
+      return `<g transform="translate(${column * (CARD + GAP)} 0)"><rect x="1" y="8" width="${CARD - 2}" height="${height - 16}" rx="12" fill="white" stroke="black" stroke-width="2"/><g transform="translate(0 ${top})">${c.svg}</g></g>`
+    }).join('')
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${STRIP_WIDTH}" height="${height}" viewBox="0 0 ${STRIP_WIDTH} ${height}" font-family="Courier New, monospace" text-anchor="middle"><rect width="100%" height="100%" fill="white"/>${contents}</svg>`
+    yield { height, svg }
+  }
+}
+
 function renderProductLabelsHtml(labels) {
-  return expandLabels(labels).map((label) => {
-    const variant = variantText(label)
-    const svg = barcodeSvg(label.barcode)
-    const code = svg
-      ? `${svg}<div style="font:11px/1 'Courier New',monospace;letter-spacing:1px">${escape(label.barcode)}</div>`
-      : label.barcode ? `<div style="font:12px 'Courier New',monospace">${escape(label.barcode)}</div>` : ''
-    return `<div class="print-label" style="box-sizing:border-box;width:80mm;height:50mm;padding:3mm 4mm;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1mm;overflow:hidden;text-align:center;font-family:Arial,Helvetica,sans-serif;color:black;background:white">
-      <div style="font-size:13px;font-weight:bold;line-height:1.2;max-height:2.4em;overflow:hidden">${escape(label.productName)}</div>
-      ${variant ? `<div style="font-size:11px">${escape(variant)}</div>` : ''}
-      <div style="font-size:24px;font-weight:bold;line-height:1.1">${escape(money(label.price))}</div>
-      ${code}
-      <div style="font:10px 'Courier New',monospace">${escape(label.sku)}</div>
-    </div>`
-  }).join('')
+  return Array.from(labelStripRows(labels), row => `<div class="print-label-row">${row.svg}</div>`).join('')
 }
 
-module.exports = { MAX_COPIES, MAX_LABELS, expandLabels, variantText, ean13Bits, renderProductLabelsHtml }
+module.exports = { MAX_COPIES, MAX_LABELS, STRIP_WIDTH, expandLabels, variantText, ean13Bits, labelStripRows, renderProductLabelsHtml }

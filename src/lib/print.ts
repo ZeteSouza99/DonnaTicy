@@ -159,33 +159,30 @@ export async function printSaleReceipt(sale: SaleReceiptData): Promise<void> {
 }
 
 /**
- * Etiquetas de produto na bobina de 80 mm. Usa o serviço local (ESC/POS, corte entre etiquetas);
- * sem serviço, ou com uma versão instalada que ainda não conhece etiquetas, abre a impressão do
- * navegador com uma página de 80 x 50 mm por etiqueta. Falha depois do envio é lançada, sem segunda
- * tentativa, para não imprimir em dobro.
+ * O tipo distinto impede o serviço 1.2.0 de aceitar a tira como etiquetas individuais.
+ * Só usa o navegador antes do envio ou após uma recusa explícita do tipo.
  */
 export async function printProductLabels(labels: ProductLabelData[]): Promise<"service" | "browser"> {
-  const html = renderProductLabelsHtml(labels);
   if (await isPrintServiceOnline()) {
     let response: Response;
     try {
       response = await fetch(`${PRINT_SERVICE_URL}/print`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "product_labels", data: { labels } }),
+        body: JSON.stringify({ type: "product_label_strip", data: { labels } }),
         signal: AbortSignal.timeout(30_000),
       });
     } catch {
       serviceHealthCache = null;
       throw new Error("O serviço de impressão não respondeu. Confira a impressora antes de tentar de novo.");
     }
-    const result = await response.json().catch(() => ({}));
-    if (response.ok && result.success === true) return "service";
-    const error = typeof result.error === "string" ? result.error : "";
-    if (!(response.status === 400 && error.startsWith("Tipo de impressão inválido"))) {
+    const result = await response.json().catch(() => null);
+    if (response.ok && result?.success === true) return "service";
+    const error = typeof result?.error === "string" ? result.error : "";
+    if (!(response.status === 400 && error === "Tipo de impressão inválido: product_label_strip")) {
       throw new Error(error || "O serviço não confirmou o envio à fila.");
     }
   }
-  printHtml(html, "printing-labels");
+  printHtml(renderProductLabelsHtml(labels), "printing-labels");
   return "browser";
 }

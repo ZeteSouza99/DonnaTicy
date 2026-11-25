@@ -35,7 +35,7 @@ Copy-Item -LiteralPath $NodeLicense -Destination (Join-Path $payload 'runtime\LI
 $node = Join-Path $payload 'runtime\node.exe'
 $nodeVersion = (& $node --version).Trim()
 if ($LASTEXITCODE -ne 0) { throw 'Falha no runtime empacotado.' }
-& $node -e 'require(process.argv[1]); require(process.argv[2]); require(process.argv[3]);' (Join-Path $payload 'node_modules\express') (Join-Path $payload 'node_modules\cors') (Join-Path $payload 'node_modules\iconv-lite')
+& $node -e 'require(process.argv[1]); require(process.argv[2]); require(process.argv[3]); require(process.argv[4]);' (Join-Path $payload 'node_modules\express') (Join-Path $payload 'node_modules\cors') (Join-Path $payload 'node_modules\iconv-lite') (Join-Path $payload 'node_modules\sharp')
 if ($LASTEXITCODE -ne 0) { throw 'Dependencias incompletas.' }
 $package = Read-PrintJson (Join-Path $payload 'package.json')
 $entries = @(Get-ChildItem -LiteralPath $payload -Recurse -File -Force | ForEach-Object {

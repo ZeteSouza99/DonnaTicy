@@ -34,7 +34,12 @@ export default function PrintingPage() {
   }
 
   return <div className="max-w-3xl space-y-6">
-    <PageHeader title="Impressão de recibos" description="Teste a impressora USB conectada a este computador." />
+    <PageHeader title="Impressão de recibos e etiquetas" description="Configure a impressora USB deste caixa." />
+    <section className="panel space-y-3" aria-labelledby="label-strip-title">
+      <h2 id="label-strip-title" className="text-lg font-semibold">Etiquetas na bobina de 80 mm</h2>
+      <p className="text-sm text-gray-600">Para imprimir duas etiquetas por linha e cortar só no fim do lote, baixe o instalador no computador da impressora. Extraia o ZIP, execute INSTALAR.cmd e recarregue o catálogo. A atualização preserva a fila configurada.</p>
+      <a className="btn-secondary" href="https://github.com/ZeteSouza99/DonnaTicy/releases/download/print-service-v1.3.0/DonnaTicy_Impressao_Windows_x64_1.3.0.zip">Baixar serviço de impressão 1.3.0 (Windows x64)</a>
+    </section>
     <section className="panel space-y-4" aria-labelledby="printer-title">
       <h2 id="printer-title" className="text-lg font-semibold">Teste de impressão</h2>
       <p className="text-sm text-gray-600">O teste imprime uma amostra de recibo de 80 mm, com texto, acentos e código de barras. Não registra venda, pagamento ou movimentação de estoque.</p>

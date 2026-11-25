@@ -14,4 +14,6 @@ export const MAX_LABELS: number;
 export function expandLabels(labels: ProductLabelData[]): ProductLabelData[];
 export function variantText(label: ProductLabelData): string;
 export function ean13Bits(value: string | null | undefined): string | null;
+export const STRIP_WIDTH: number;
+export function labelStripRows(labels: ProductLabelData[]): IterableIterator<{ height: number; svg: string }>;
 export function renderProductLabelsHtml(labels: ProductLabelData[]): string;

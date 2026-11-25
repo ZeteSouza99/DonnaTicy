@@ -71,3 +71,13 @@ test('falha da fila nao vira sucesso e nao e reenviada', async () => {
   assert.match((await response.json()).error, /spooler simulado/)
   assert.equal(jobs, 3)
 })
+
+test('envia a tira completa em um trabalho e recusa um lote invalido sem tocar na fila', async () => {
+  fail = false
+  const before = jobs
+  const label = { productName:'Regata', price:59.9, barcode:'2000000012346', sku:'REG-M', copies:6 }
+  const send = labels => post('https://donnaticy.vercel.app', { type:'product_label_strip', data:{ labels } })
+  assert.deepEqual(await (await send([label])).json(), { success:true })
+  assert.equal((await send([label, { ...label, copies:0 }])).status, 400)
+  assert.equal(jobs, before + 1)
+})

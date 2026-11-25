@@ -3,7 +3,7 @@ const cors = require('cors')
 const fs = require('fs')
 const path = require('path')
 const { buildSaleReceipt } = require('./receipt-builder')
-const { buildProductLabels } = require('./label-builder')
+const { buildProductLabels, buildLabelStrip } = require('./label-builder')
 const { printRaw } = require('./win-print')
 
 // config.json (criado pelo install.bat) ou variáveis de ambiente, que têm prioridade.
@@ -69,6 +69,9 @@ app.post('/print', async (req, res) => {
         break
       case 'product_labels':
         buffer = buildProductLabels(data.labels)
+        break
+      case 'product_label_strip':
+        buffer = await buildLabelStrip(data.labels)
         break
       default:
         return res.status(400).json({ error: `Tipo de impressão inválido: ${type}` })

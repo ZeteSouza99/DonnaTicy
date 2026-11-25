@@ -24,6 +24,12 @@ jobs:
       - name: Instalar dependências
         run: npm ci
 
+      - name: Testar o serviço de impressão com fila simulada
+        working-directory: print-service
+        run: |
+          npm ci --ignore-scripts --omit=dev
+          node --test tests/http.test.cjs
+
       - name: Gerar Prisma Client
         run: npx prisma generate
 

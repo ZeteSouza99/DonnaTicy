@@ -1,8 +1,8 @@
 # Impressao USB da Donna Ticy
 
-Versao 1.2.0: imprime tambem as etiquetas de produto (nome, cor e tamanho, preco, EAN-13 e SKU), uma por corte na bobina de 80 mm. Usa a porta 15555. A porta 5555 do PDV e de alguns emuladores permanece livre para esses programas. O instalador verifica ocupacao TCP mesmo quando o outro programa nao responde por HTTP.
+Versao 1.3.0: na bobina de 80 mm, imprime duas etiquetas por linha, com 3 mm livres no meio para a tesoura e um unico corte no fim do lote. A altura acompanha o conteudo. Se a quantidade for impar, a ultima etiqueta sai sozinha. Os recibos continuam no formato anterior. O servico usa a porta 15555.
 
-Para atualizar uma instalacao anterior, extraia o ZIP novo e execute **INSTALAR.cmd**; a configuracao existente e preservada. Enquanto a versao antiga estiver instalada, o site imprime as etiquetas pelo navegador, em paginas de 80 x 50 mm.
+No ERP, abra **Configuracoes > Impressao** e baixe o ZIP para Windows x64. Extraia o pacote e execute **INSTALAR.cmd** na conta do caixa. O instalador preserva a configuracao. Sem o servico atualizado, o site abre a tira no navegador; nesse modo o tamanho do papel e o corte dependem do driver.
 
 ## No computador da cliente
 

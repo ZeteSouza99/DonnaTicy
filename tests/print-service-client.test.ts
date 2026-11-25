@@ -79,7 +79,7 @@ describe("etiquetas na MP-4200 TH", () => {
     vi.stubGlobal("fetch", fetch);
     const { printProductLabels } = await load();
     expect(await printProductLabels([label])).toBe("service");
-    expect(JSON.parse(fetch.mock.calls[1][1].body)).toEqual({ type: "product_labels", data: { labels: [label] } });
+    expect(JSON.parse(fetch.mock.calls[1][1].body)).toEqual({ type: "product_label_strip", data: { labels: [label] } });
   });
 
   it.each([
@@ -100,7 +100,7 @@ describe("etiquetas na MP-4200 TH", () => {
     ["serviço desligado", () => vi.fn().mockRejectedValue(new TypeError("Failed to fetch"))],
     ["serviço instalado sem suporte a etiquetas", () => vi.fn()
       .mockResolvedValueOnce(Response.json({ status: "online" }))
-      .mockResolvedValueOnce(Response.json({ error: "Tipo de impressão inválido: product_labels" }, { status: 400 }))],
+      .mockResolvedValueOnce(Response.json({ error: "Tipo de impressão inválido: product_label_strip" }, { status: 400 }))],
   ])("%s: imprime pelo navegador em páginas de 80 mm", async (_name, makeFetch) => {
     const printed = stubBrowser();
     vi.stubGlobal("fetch", makeFetch());
@@ -109,7 +109,8 @@ describe("etiquetas na MP-4200 TH", () => {
     await vi.runAllTimersAsync();
     expect(printed).toHaveLength(1);
     expect(printed[0].classes).toContain("printing-labels");
-    expect(printed[0].html.match(/class="print-label"/g)).toHaveLength(2);
+    expect(printed[0].html.match(/<svg\b/g)).toHaveLength(1);
+    expect(printed[0].html.match(/LEG-M/g)).toHaveLength(2);
     expect(printed[0].html).toContain("R$ 189,90");
   });
 });

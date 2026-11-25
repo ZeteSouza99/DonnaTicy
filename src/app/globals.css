@@ -36,20 +36,26 @@
     margin: 0 !important;
   }
 
-  /* Etiqueta de produto: uma página de 80 x 50 mm por etiqueta, sem margem (o Chrome omite cabeçalho e rodapé). */
-  @page product-label {
-    size: 80mm 50mm;
+  @page label-strip {
+    size: auto;
     margin: 0;
   }
 
   body.printing-receipt.printing-labels #print-root {
-    page: product-label;
-    width: 80mm !important;
-    max-width: 80mm !important;
+    page: label-strip;
+    width: 72mm !important;
+    max-width: 72mm !important;
+    margin: 0 auto !important;
   }
 
-  .print-label + .print-label {
-    break-before: page;
+  .print-label-row {
+    break-inside: avoid;
+  }
+
+  .print-label-row svg {
+    display: block;
+    width: 100%;
+    height: auto;
   }
 
   .print-receipt {
