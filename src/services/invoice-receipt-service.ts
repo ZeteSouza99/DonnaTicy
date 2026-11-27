@@ -5,7 +5,7 @@ import { createAuditLogTx } from "@/lib/audit";
 import { ConflictError, NotFoundError, ValidationError } from "@/lib/errors";
 import { allocateCents } from "@/lib/allocations";
 import { lockStockPositions } from "./stock-lock";
-import { validateInvoiceDocument, validateReceiptReview, validateReceiptDraft, type InvoiceDocument, type ReceiptReview } from "@/lib/import/invoice-document";
+import { saleUnitLine, validateInvoiceDocument, validateReceiptReview, validateReceiptDraft, type InvoiceDocument, type ReceiptReview } from "@/lib/import/invoice-document";
 
 const PREFIX="document:";
 const digest=(s:string)=>createHash("sha256").update(s).digest("hex");
@@ -86,7 +86,8 @@ export async function confirmInvoiceReceipt(id:string,userId:string,input:unknow
   const receipts:Array<{variantId:string;quantity:number;line:number;sku:string;description:string;ncm:string;unit:string;unitPrice:number;totalPrice:number;realCost:number;commercialValue:number}>=[];
   for(const original of doc.items){
    const checked=review.items.find(i=>i.line===original.line)!;
-   const item={...original,code:checked.code??original.code,description:checked.description??original.description};
+   const saleItem=saleUnitLine(original);
+   const item={...saleItem,code:checked.code??saleItem.code,description:checked.description??saleItem.description};
    const splitTotals=allocateCents(Math.round(item.total*100),checked.allocations.map(a=>a.quantity));
    const unitCost=costs[item.line-1]/100/item.quantity;
    for(const [index,allocation]of checked.allocations.entries()){

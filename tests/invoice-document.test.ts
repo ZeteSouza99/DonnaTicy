@@ -1,8 +1,18 @@
 import { describe, expect, it } from "vitest";
 import { parseDanfeText, pdfTextLines, validAccessKey, validateInvoiceDocument, validateReceiptReview } from "../src/lib/import/invoice-document";
 import { invoiceFixture, danfeFixture } from "./fixtures/invoice-document";
+import { xmlItemNumber } from "../src/lib/import/invoice-browser";
 
 describe("leitura e conferência da nota", () => {
+  it("aceita a numeração explícita em atributo ou elemento e rejeita numeração ambígua", () => {
+    expect(xmlItemNumber(null, ["27"])).toBe(27);
+    expect(xmlItemNumber("27", [])).toBe(27);
+    expect(xmlItemNumber("027", ["27"])).toBe(27);
+    expect(() => xmlItemNumber(null, [])).toThrow(/numeração/);
+    expect(() => xmlItemNumber(null, ["0"])).toThrow(/numeração/);
+    expect(() => xmlItemNumber("1", ["2"])).toThrow(/divergente/);
+    expect(() => xmlItemNumber(null, ["2", "2"])).toThrow(/numeração/);
+  });
   const metadata = {source: "pdf" as const, fileName: "teste.pdf", fileHash: "b".repeat(64)};
   it("reconhece 22 itens em duas páginas e mantém os totais e códigos", () => {
     const doc = parseDanfeText(danfeFixture().text, metadata);

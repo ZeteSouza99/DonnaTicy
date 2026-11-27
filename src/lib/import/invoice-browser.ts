@@ -2,6 +2,15 @@ import { detectImportFormat } from "./import-files";
 import { parseDanfeText, pdfTextLines, validateInvoiceDocument, type InvoiceDocument } from "./invoice-document";
 
 type Metadata = Pick<InvoiceDocument,"fileName"|"fileHash"|"source">;
+
+export function xmlItemNumber(attribute: string | null, fields: string[]): number {
+  const values = attribute === null ? fields : [attribute, ...fields];
+  if (fields.length > 1 || !values.length || values.some(v => !/^\d+$/.test(v) || Number(v) <= 0 || Number(v) !== Number(values[0]))) {
+    throw new Error("XML: numeração de item ausente, inválida ou divergente.");
+  }
+  return Number(values[0]);
+}
+
 /** XML é lido no navegador; DTD e entidades externas são recusados antes do DOMParser. */
 export function parseInvoiceXml(xml: string, metadata: Metadata): InvoiceDocument {
   if (/<!DOCTYPE|<!ENTITY/i.test(xml)) throw new Error("XML com DTD ou entidades externas não é aceito.");
@@ -30,7 +39,9 @@ export function parseInvoiceXml(xml: string, metadata: Metadata): InvoiceDocumen
   const date = all(ide,"dhEmi").length ? value(ide,"dhEmi") : value(ide,"dEmi");
   const items = all(info,"det").map(det=> {
     const p=one(det,"prod"), ean=all(p,"cEAN")[0]?.textContent?.trim() ?? "";
-    return {line:Number(det.getAttribute("nItem")),code:value(p,"cProd"),description:value(p,"xProd"),ncm:value(p,"NCM"),unit:value(p,"uCom"),quantity:numeric(p,"qCom"),unitPrice:numeric(p,"vUnCom"),total:numeric(p,"vProd"),barcode:/^\d{8,14}$/.test(ean)?ean:""};
+    const fields = Array.from(det.children).filter(child => child.localName === "nItem").map(child => child.textContent?.trim() ?? "");
+    const line = xmlItemNumber(det.getAttribute("nItem"), fields);
+    return {line,code:value(p,"cProd"),description:value(p,"xProd"),ncm:value(p,"NCM"),unit:value(p,"uCom"),quantity:numeric(p,"qCom"),unitPrice:numeric(p,"vUnCom"),total:numeric(p,"vProd"),barcode:/^\d{8,14}$/.test(ean)?ean:""};
   });
   return validateInvoiceDocument({...metadata,source:"xml",accessKey:key,number:value(ide,"nNF"),series:value(ide,"serie"),supplierName:value(issuer,"xNome"),supplierDocument:value(issuer,"CNPJ"),issueDate:date.slice(0,10),productsTotal:numeric(total,"vProd"),freight:numeric(total,"vFrete"),discount:numeric(total,"vDesc",true),invoiceTotal:numeric(total,"vNF"),items});
 }

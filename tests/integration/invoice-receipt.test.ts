@@ -15,6 +15,31 @@ function review() {
 }
 
 describe("entrada de NF-e atômica",()=>{
+  it("recebe as caixas de chá inteiras e divide o display XPLOD em flaconetes mantendo o total fiscal", async () => {
+    const doc = invoiceFixture();
+    const base = doc.items[0];
+    doc.items = [
+      {...base, description:"CHÁ MISTO", unit:"CX", quantity:2, unitPrice:5.68, total:11.36},
+      {...base, line:2, code:"002", description:"ENERGETICO XPLOD DISPLAY COM 24 FLACONETES", unit:"UN", quantity:1, unitPrice:40.25, total:40.25},
+    ];
+    doc.productsTotal = doc.invoiceTotal = 51.61;
+    doc.freight = 0;
+    const job = await createInvoiceDraft(fixture.user.id, doc);
+    const input = {...review(), items: [2,24].map((quantity, i) => ({
+      line:i+1, categoryId:fixture.product.categoryId, salePrice:10, allocations:[{quantity,color:"Única",size:"U"}],
+    }))};
+    const display = input.items[1].allocations[0];
+    display.quantity = 1;
+    await expect(confirmInvoiceReceipt(job.id,fixture.user.id,input)).rejects.toThrow(/somar 24/);
+    display.quantity = 24;
+    expect(await confirmInvoiceReceipt(job.id,fixture.user.id,input)).toMatchObject({totalUnits:26});
+    expect(await confirmInvoiceReceipt(job.id,fixture.user.id,input)).toMatchObject({totalUnits:26});
+    const rows = await prisma.invoiceItem.findMany({orderBy:{quantity:"asc"}});
+    expect(rows.map(r=>[r.unit,r.quantity,Number(r.totalPrice)])).toEqual([["CX",2,11.36],["UN",24,40.25]]);
+    expect(Number(rows[1].unitPrice)).toBeCloseTo(40.25/24,4);
+    expect((await prisma.stockMovement.aggregate({_sum:{quantity:true}}))._sum.quantity).toBe(26);
+    expect((await getInvoiceDraft(job.id,fixture.user.id)).document.items[1].quantity).toBe(1);
+  });
   it("usa a correção conferida e preserva a leitura original no histórico",async()=>{
     const doc={...invoiceFixture(),source:"ocr" as const};
     const job=await createInvoiceDraft(fixture.user.id,doc);

@@ -20,6 +20,19 @@ export const invoiceDocumentSchema = z.object({
 });
 export type InvoiceDocument = z.infer<typeof invoiceDocumentSchema>;
 export type InvoiceLine = z.infer<typeof invoiceLineSchema>;
+
+function isTeaBox(item: InvoiceLine) {
+  return item.unit.toUpperCase().replace(/\.$/, "") === "CX" && /^CH[AÁ](?:\s|$)/i.test(item.description);
+}
+
+/** View used for stock, pricing and sale. The draft keeps the supplier's original packaging. */
+export function saleUnitLine(item: InvoiceLine): InvoiceLine {
+  if (!/^UN\.?$/i.test(item.unit) || !/^ENERG[EÉ]TICO XPLOD DISPLAY COM 24 FLACONETES$/i.test(item.description)) return item;
+  return {
+    ...item, quantity: item.quantity * 24, unitPrice: item.unitPrice / 24,
+    description: "ENERGÉTICO XPLOD FLACONETE", unit: "UN", barcode: "",
+  };
+}
 export const receiptAllocationSchema = z.object({
   quantity: z.number().int().positive().max(100000),
   variantId: z.string().min(1).max(100).optional(),
@@ -74,7 +87,7 @@ export function validateInvoiceDocument(input: unknown): InvoiceDocument {
   if (lines.size !== doc.items.length || doc.items.some((i, index) => i.line !== index + 1)) throw new Error("A sequência de itens está incompleta ou repetida. Envie todas as páginas ou o XML.");
   for (const item of doc.items) {
     if (!Number.isInteger(item.quantity)) throw new Error(`Item ${item.line}: quantidade fracionada. Esta entrada aceita somente peças inteiras.`);
-    if (!["UN", "UND", "UNID", "UNIDADE", "PC", "PÇ", "PECA", "PEÇA"].includes(item.unit.toUpperCase().replace(/\.$/, ""))) throw new Error(`Item ${item.line}: unidade ${item.unit} exige conversão para peças. Utilize uma entrada com conversão conferida.`);
+    if (!isTeaBox(item) && !["UN", "UND", "UNID", "UNIDADE", "PC", "PÇ", "PECA", "PEÇA"].includes(item.unit.toUpperCase().replace(/\.$/, ""))) throw new Error(`Item ${item.line}: unidade ${item.unit} exige conversão para peças. Utilize uma entrada com conversão conferida.`);
     if (Math.abs(Math.round(item.quantity * item.unitPrice * 100) - Math.round(item.total * 100)) > 1) throw new Error(`Item ${item.line}: quantidade e custo não fecham com o total. Confira o documento.`);
   }
   const total = doc.items.reduce((sum, item) => sum + Math.round(item.total * 100), 0);
@@ -87,7 +100,8 @@ export function validateReceiptReview(doc: InvoiceDocument, input: unknown): Rec
   const review = receiptReviewSchema.parse(input);
   const codes = new Map<string,string>();
   if (review.items.length !== doc.items.length || new Set(review.items.map(i => i.line)).size !== doc.items.length) throw new Error("Confira todos os itens da nota, sem repetir linhas.");
-  for (const item of doc.items) {
+  for (const original of doc.items) {
+    const item = saleUnitLine(original);
     const checked = review.items.find(i => i.line === item.line);
     if (!checked || checked.allocations.reduce((sum, a) => sum + a.quantity, 0) !== item.quantity) throw new Error(`Item ${item.line}: a distribuição por cor e tamanho deve somar ${item.quantity} peças.`);
     if (checked.allocations.some(a => !a.variantId) && (!checked.categoryId || checked.salePrice <= 0)) throw new Error(`Item ${item.line}: informe categoria e preço de venda para criar o produto.`);

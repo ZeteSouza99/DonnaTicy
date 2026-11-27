@@ -1,4 +1,4 @@
-import type { InvoiceDocument, ReceiptReview } from "./invoice-document";
+import { saleUnitLine, type InvoiceDocument, type ReceiptReview } from "./invoice-document";
 
 type Options = { locations: { id: string }[]; collections: { id: string }[]; lines: { id: string }[] };
 export function singleReceiptOptions(options?: Options | null) {
@@ -20,7 +20,7 @@ export function fillReceiptBlanks(doc: InvoiceDocument, review: ReceiptReview, v
     if (salePrice === 0 && factor !== null) {
       const item = doc.items.find(i => i.line === row.line);
       if (!item || item.quantity <= 0 || doc.productsTotal <= 0) throw new Error("Confira os custos e quantidades da nota antes de calcular os preços.");
-      salePrice = Math.round(doc.invoiceTotal * item.total / doc.productsTotal / item.quantity * factor * 100) / 100;
+      salePrice = Math.round(doc.invoiceTotal * item.total / doc.productsTotal / saleUnitLine(item).quantity * factor * 100) / 100;
       if (!Number.isFinite(salePrice) || salePrice <= 0 || salePrice > 99_999_999) throw new Error("O multiplicador resultou em um preço inválido. Confira os valores.");
       changed++;
     }
